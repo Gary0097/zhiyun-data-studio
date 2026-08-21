@@ -14,6 +14,20 @@ def _day(value: Any) -> date | None:
         return None
 
 
+def _number(value: Any) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _integer(value: Any) -> int:
+    try:
+        return max(0, int(float(value or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
 def score_order(order: dict[str, Any], today: date | None = None) -> dict[str, Any]:
     """Score one order and return evidence-backed risk reasons."""
     now = today or date.today()
@@ -22,8 +36,8 @@ def score_order(order: dict[str, Any], today: date | None = None) -> dict[str, A
     promised = _day(order.get("promised_date"))
     logistics = _day(order.get("last_logistics_update"))
     status = str(order.get("status", ""))
-    progress = float(order.get("progress") or 0)
-    production_delay = max(0, int(order.get("production_delay_days") or 0))
+    progress = _number(order.get("progress"))
+    production_delay = _integer(order.get("production_delay_days"))
 
     if promised and status != "已完成":
         remaining = (promised - now).days
@@ -56,6 +70,10 @@ def score_order(order: dict[str, Any], today: date | None = None) -> dict[str, A
         reasons.append("暂未发现明显交付风险信号")
     return {
         "order_no": order.get("order_no"),
+        "customer_name": order.get("customer_name"),
+        "status": status,
+        "promised_date": order.get("promised_date"),
+        "progress": progress,
         "score": score,
         "level": level,
         "reasons": reasons,
