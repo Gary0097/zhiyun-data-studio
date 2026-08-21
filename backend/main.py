@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
@@ -14,6 +16,9 @@ try:
     from .risk_engine import analyze_orders
     from .table_parser import parse_table
 except ImportError:
+    backend_dir = str(Path(__file__).resolve().parent)
+    if backend_dir not in sys.path:
+        sys.path.insert(0, backend_dir)
     from agent_tools import analyze_order_delivery_risk
     from risk_engine import analyze_orders
     from table_parser import parse_table
