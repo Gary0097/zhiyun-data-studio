@@ -13,6 +13,7 @@ from qwenpaw.plugins.api import PluginApi
 
 try:
     from .agent_tools import analyze_order_delivery_risk
+    from .brief_engine import generate_order_daily_brief
     from .risk_engine import analyze_orders
     from .trend_engine import analyze_order_trends
     from .table_parser import parse_table
@@ -21,6 +22,7 @@ except ImportError:
     if backend_dir not in sys.path:
         sys.path.insert(0, backend_dir)
     from agent_tools import analyze_order_delivery_risk
+    from brief_engine import generate_order_daily_brief
     from risk_engine import analyze_orders
     from trend_engine import analyze_order_trends
     from table_parser import parse_table
@@ -59,9 +61,19 @@ async def trend_analysis(request: RiskRequest) -> dict[str, Any]:
     return analyze_order_trends(request.orders)
 
 
+@router.post("/brief/daily")
+async def daily_brief(request: RiskRequest) -> dict[str, Any]:
+    return generate_order_daily_brief(request.orders)
+
+
 def analyze_order_kpi_trends(orders: list[dict[str, Any]]) -> dict[str, Any]:
     """Analyze monthly order count, progress and production delay trends."""
     return analyze_order_trends(orders)
+
+
+def create_order_daily_brief(orders: list[dict[str, Any]]) -> dict[str, Any]:
+    """Create a one-page order management brief with risks and trend insights."""
+    return generate_order_daily_brief(orders)
 
 
 class DataStudioPlugin:
@@ -74,6 +86,13 @@ class DataStudioPlugin:
             tool_func=analyze_order_delivery_risk,
             description="分析 Data Core 查询出的订单交付风险，返回红黄绿统计、风险分数和可解释原因。",
             icon="⚠️",
+            tool_type="filesystem",
+        )
+        api.register_tool(
+            tool_name="create_order_daily_brief",
+            tool_func=create_order_daily_brief,
+            description="根据订单数据生成一页式每日管理简报，包含交付风险、逾期、临期、数据质量和趋势结论，并明确数据覆盖范围。",
+            icon="📰",
             tool_type="filesystem",
         )
         api.register_tool(
