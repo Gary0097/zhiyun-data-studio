@@ -2,12 +2,16 @@
 
 import unittest
 from datetime import date
+from pathlib import Path
 
 from backend.agent_tools import RiskToolInputError, parse_order_payload
 from backend.risk_engine import analyze_orders, score_order
 
 
 class RiskEngineTests(unittest.TestCase):
+    def test_backend_is_an_explicit_python_package(self) -> None:
+        self.assertTrue((Path(__file__).parents[1] / "backend" / "__init__.py").is_file())
+
     def test_overdue_and_delayed_order_is_red(self) -> None:
         risk = score_order({"order_no": "A", "promised_date": "2026-08-10", "status": "生产中", "progress": 40, "production_delay_days": 7}, date(2026, 8, 22))
         self.assertEqual(risk["level"], "red")
