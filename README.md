@@ -2,7 +2,7 @@
 
 Data Studio 是 AI-OS 的首个独立业务 PawApp，通过 `zhiyun-data-core` 使用 Workspace 统一数据库，不启动独立端口。
 
-## 第一版功能
+## 已实现功能（v0.3.0）
 
 - 订单数据总览与红/黄/绿交付风险统计。
 - 可解释风险评分，显示逾期、生产延误、物流停滞和低进度原因。
@@ -13,6 +13,10 @@ Data Studio 是 AI-OS 的首个独立业务 PawApp，通过 `zhiyun-data-core` �
 - 批次列表与可恢复撤销。
 - Data Core 不可用时显示明确错误，不回退到静态演示数据。
 - Agent 可串联 `query_enterprise_orders` 与 `analyze_order_delivery_risk`，直接回答交付风险问题。
+- 订单号、客户、产品关键词检索与红/黄/绿风险筛选。
+- 当前筛选结果导出 CSV（包含风险等级、分数和判断依据）。
+- 风险率、平均进度、逾期数量和数据质量问题统计。
+- 支持 ISO 日期时间与中英文已完成状态，异常进度自动限制在 0–100%。
 
 ## AI 对话验收
 

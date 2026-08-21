@@ -9,7 +9,7 @@ from typing import Any
 
 def _day(value: Any) -> date | None:
     try:
-        return date.fromisoformat(str(value))
+        return date.fromisoformat(str(value).strip()[:10])
     except (TypeError, ValueError):
         return None
 
@@ -19,6 +19,10 @@ def _number(value: Any) -> float:
         return float(value or 0)
     except (TypeError, ValueError):
         return 0.0
+
+
+COMPLETED_STATUSES = {"已完成", "已交付", "完成", "closed", "completed", "delivered"}
+LOGISTICS_STATUSES = {"待发货", "运输中", "已发货", "shipping", "in_transit"}
 
 
 def _integer(value: Any) -> int:
@@ -35,11 +39,20 @@ def score_order(order: dict[str, Any], today: date | None = None) -> dict[str, A
     reasons: list[str] = []
     promised = _day(order.get("promised_date"))
     logistics = _day(order.get("last_logistics_update"))
-    status = str(order.get("status", ""))
-    progress = _number(order.get("progress"))
+    status = str(order.get("status", "")).strip()
+    status_key = status.casefold()
+    completed = status_key in COMPLETED_STATUSES
+    progress = min(100.0, max(0.0, _number(order.get("progress"))))
     production_delay = _integer(order.get("production_delay_days"))
+    data_quality_issues: list[str] = []
+    if not order.get("order_no"):
+        data_quality_issues.append("缺少订单编号")
+    if not promised:
+        data_quality_issues.append("缺少或无法识别承诺交期")
+    if not status:
+        data_quality_issues.append("缺少订单状态")
 
-    if promised and status != "已完成":
+    if promised and not completed:
         remaining = (promised - now).days
         if remaining < 0:
             points = min(70, 20 + abs(remaining) * 4)
@@ -54,7 +67,7 @@ def score_order(order: dict[str, Any], today: date | None = None) -> dict[str, A
         score += points
         reasons.append(f"生产延误{production_delay}天")
 
-    if logistics and status in {"待发货", "运输中"}:
+    if logistics and status_key in LOGISTICS_STATUSES:
         stale = (now - logistics).days
         if stale >= 3:
             score += min(30, stale * 4)
@@ -77,6 +90,7 @@ def score_order(order: dict[str, Any], today: date | None = None) -> dict[str, A
         "score": score,
         "level": level,
         "reasons": reasons,
+        "data_quality_issues": data_quality_issues,
     }
 
 
@@ -84,10 +98,29 @@ def analyze_orders(orders: list[dict[str, Any]], today: date | None = None) -> d
     """Score and summarize an order collection."""
     results = [score_order(order, today) for order in orders]
     results.sort(key=lambda item: (-item["score"], str(item.get("order_no") or "")))
+    overdue = 0
+    due_soon = 0
+    quality_issues = 0
+    status_distribution: dict[str, int] = {}
+    for order, result in zip(orders, results, strict=False):
+        promised = _day(order.get("promised_date"))
+        status = str(order.get("status", "")).strip()
+        status_distribution[status or "未填写"] = status_distribution.get(status or "未填写", 0) + 1
+        if promised and status.casefold() not in COMPLETED_STATUSES:
+            remaining = (promised - (today or date.today())).days
+            overdue += remaining < 0
+            due_soon += 0 <= remaining <= 3
+        quality_issues += len(result["data_quality_issues"])
+    total = len(results)
     summary = {
-        "total": len(results),
+        "total": total,
         "red": sum(item["level"] == "red" for item in results),
         "yellow": sum(item["level"] == "yellow" for item in results),
         "green": sum(item["level"] == "green" for item in results),
+        "risk_rate": round(100 * sum(item["level"] != "green" for item in results) / total, 1) if total else 0.0,
+        "average_progress": round(sum(item["progress"] for item in results) / total, 1) if total else 0.0,
+        "overdue": overdue,
+        "due_within_3_days": due_soon,
+        "data_quality_issues": quality_issues,
     }
-    return {"summary": summary, "results": results}
+    return {"summary": summary, "status_distribution": status_distribution, "results": results}

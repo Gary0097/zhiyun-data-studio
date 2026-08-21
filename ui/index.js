@@ -42,7 +42,7 @@
     var schema = schemaState[0], setSchema = schemaState[1];
     var batchesState = React.useState([]);
     var batches = batchesState[0], setBatches = batchesState[1];
-    var risksState = React.useState({ summary: { total: 0, red: 0, yellow: 0, green: 0 }, results: [] });
+    var risksState = React.useState({ summary: { total: 0, red: 0, yellow: 0, green: 0, risk_rate: 0, average_progress: 0, overdue: 0, data_quality_issues: 0 }, status_distribution: {}, results: [] });
     var risks = risksState[0], setRisks = risksState[1];
     var loadingState = React.useState(true);
     var loading = loadingState[0], setLoading = loadingState[1];
@@ -58,6 +58,10 @@
     var fieldModal = fieldModalState[0], setFieldModal = fieldModalState[1];
     var fieldForm = antd.Form.useForm()[0];
     var message = antd.App.useApp().message;
+    var queryState = React.useState("");
+    var query = queryState[0], setQuery = queryState[1];
+    var levelState = React.useState("all");
+    var level = levelState[0], setLevel = levelState[1];
 
     function refresh() {
       setLoading(true); setError("");
@@ -138,23 +142,58 @@
       return h(antd.Tooltip, { title: risk.reasons.join("；") }, h(antd.Tag, { color: riskColor(risk.level) }, riskText(risk.level)));
     }});
 
+    var visibleRecords = records.filter(function (row) {
+      var risk = riskByOrder[row.order_no] || { level: "green" };
+      var needle = query.trim().toLowerCase();
+      var matchesText = !needle || [row.order_no, row.customer_name, row.product_name].some(function (value) { return String(value || "").toLowerCase().indexOf(needle) >= 0; });
+      return matchesText && (level === "all" || risk.level === level);
+    });
+
+    function exportCsv() {
+      if (!visibleRecords.length) { message.warning("当前没有可导出的订单"); return; }
+      var fields = schema.fields.filter(function (field) { return field.active; });
+      var quote = function (value) {
+        var text = String(value == null ? "" : value);
+        if (/^[=+\-@]/.test(text)) text = "'" + text;
+        return '"' + text.replace(/"/g, '""') + '"';
+      };
+      var lines = [fields.map(function (field) { return quote(field.label); }).concat([quote("风险等级"), quote("风险分数"), quote("判断依据")]).join(",")];
+      visibleRecords.forEach(function (row) {
+        var risk = riskByOrder[row.order_no] || { level: "green", score: 0, reasons: [] };
+        lines.push(fields.map(function (field) { return quote(row[field.name]); }).concat([quote(riskText(risk.level)), quote(risk.score), quote((risk.reasons || []).join("；"))]).join(","));
+      });
+      var blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+      var link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "订单风险清单.csv"; link.click();
+      window.setTimeout(function () { URL.revokeObjectURL(link.href); }, 1000);
+    }
+
     var summaryCards = [
       ["订单总数", risks.summary.total, "#1677ff"], ["高风险", risks.summary.red, "#ef4444"],
-      ["需关注", risks.summary.yellow, "#f59e0b"], ["正常", risks.summary.green, "#22c55e"]
+      ["需关注", risks.summary.yellow, "#f59e0b"], ["风险率", (risks.summary.risk_rate || 0) + "%", "#7c3aed"]
     ];
 
     function dashboard() { return h(React.Fragment, null,
       h("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,minmax(140px,1fr))", gap: 14 } }, summaryCards.map(function (item) {
         return h(antd.Card, { key: item[0], size: "small" }, h("div", { style: { color: "#667085" } }, item[0]), h("div", { style: { fontSize: 30, fontWeight: 700, color: item[2] } }, item[1]));
       })),
-      h(antd.Card, { title: "交付风险订单", style: { marginTop: 16 } },
-        h(antd.Table, { rowKey: "order_no", size: "small", pagination: { pageSize: 8 }, dataSource: records.filter(function (row) { return (riskByOrder[row.order_no] || {}).level !== "green"; }), columns: columns, scroll: { x: 1100 } }))
+      h(antd.Card, { title: "交付风险订单", style: { marginTop: 16 }, extra: h(antd.Space, null,
+        h(antd.Tag, { color: "red" }, "逾期 " + (risks.summary.overdue || 0)),
+        h(antd.Tag, { color: "blue" }, "平均进度 " + (risks.summary.average_progress || 0) + "%"),
+        risks.summary.data_quality_issues ? h(antd.Tag, { color: "orange" }, "数据问题 " + risks.summary.data_quality_issues) : null
+      ) },
+        h(antd.Table, { rowKey: function (row, index) { return row.__record_id || row.order_no || index; }, size: "small", pagination: { pageSize: 8 }, dataSource: records.filter(function (row) { return (riskByOrder[row.order_no] || {}).level !== "green"; }), columns: columns.concat([
+          { title: "分数", width: 70, render: function (_, row) { return (riskByOrder[row.order_no] || {}).score || 0; } },
+          { title: "判断依据", width: 260, ellipsis: true, render: function (_, row) { return ((riskByOrder[row.order_no] || {}).reasons || []).join("；"); } }
+        ]), scroll: { x: 1400 } }))
     ); }
 
-    function dataTable() { return h(antd.Card, { title: "订单数据", extra: h("div", { style: { display: "flex", gap: 8 } },
+    function dataTable() { return h(antd.Card, { title: "订单数据（" + visibleRecords.length + "/" + records.length + "）", extra: h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+      h(antd.Input.Search, { allowClear: true, value: query, placeholder: "订单号/客户/产品", style: { width: 220 }, onChange: function (event) { setQuery(event.target.value); } }),
+      h(antd.Select, { value: level, style: { width: 110 }, onChange: setLevel, options: [{ value: "all", label: "全部风险" }, { value: "red", label: "高风险" }, { value: "yellow", label: "需关注" }, { value: "green", label: "正常" }] }),
       h(antd.Upload, { accept: ".xlsx,.csv", showUploadList: false, beforeUpload: upload }, h(antd.Button, null, "导入Excel/CSV")),
+      h(antd.Button, { onClick: exportCsv }, "导出当前结果"),
       h(antd.Button, { type: "primary", onClick: generate }, "生成模拟订单")
-    ) }, h(antd.Table, { rowKey: "__record_id", size: "small", pagination: { pageSize: 15 }, dataSource: records, columns: columns, scroll: { x: 1100 } })); }
+    ) }, h(antd.Table, { rowKey: function (row, index) { return row.__record_id || row.order_no || index; }, size: "small", pagination: { pageSize: 15 }, dataSource: visibleRecords, columns: columns, scroll: { x: 1100 } })); }
 
     function importPanel() {
       if (!importData) return h(antd.Empty, { description: "请在订单数据页面选择Excel或CSV文件" });
