@@ -102,7 +102,7 @@ def analyze_orders(orders: list[dict[str, Any]], today: date | None = None) -> d
     due_soon = 0
     quality_issues = 0
     status_distribution: dict[str, int] = {}
-    for order, result in zip(orders, results, strict=False):
+    for order in orders:
         promised = _day(order.get("promised_date"))
         status = str(order.get("status", "")).strip()
         status_distribution[status or "未填写"] = status_distribution.get(status or "未填写", 0) + 1
@@ -110,7 +110,7 @@ def analyze_orders(orders: list[dict[str, Any]], today: date | None = None) -> d
             remaining = (promised - (today or date.today())).days
             overdue += remaining < 0
             due_soon += 0 <= remaining <= 3
-        quality_issues += len(result["data_quality_issues"])
+    quality_issues = sum(len(result["data_quality_issues"]) for result in results)
     total = len(results)
     summary = {
         "total": total,

@@ -14,6 +14,7 @@ from qwenpaw.plugins.api import PluginApi
 try:
     from .agent_tools import analyze_order_delivery_risk
     from .risk_engine import analyze_orders
+    from .trend_engine import analyze_order_trends
     from .table_parser import parse_table
 except ImportError:
     backend_dir = str(Path(__file__).resolve().parent)
@@ -21,6 +22,7 @@ except ImportError:
         sys.path.insert(0, backend_dir)
     from agent_tools import analyze_order_delivery_risk
     from risk_engine import analyze_orders
+    from trend_engine import analyze_order_trends
     from table_parser import parse_table
 
 router = APIRouter()
@@ -52,6 +54,16 @@ async def risk_analysis(request: RiskRequest) -> dict[str, Any]:
     return analyze_orders(request.orders)
 
 
+@router.post("/trends/analyze")
+async def trend_analysis(request: RiskRequest) -> dict[str, Any]:
+    return analyze_order_trends(request.orders)
+
+
+def analyze_order_kpi_trends(orders: list[dict[str, Any]]) -> dict[str, Any]:
+    """Analyze monthly order count, progress and production delay trends."""
+    return analyze_order_trends(orders)
+
+
 class DataStudioPlugin:
     """Register Data Studio helpers inside the QwenPaw process."""
 
@@ -62,6 +74,13 @@ class DataStudioPlugin:
             tool_func=analyze_order_delivery_risk,
             description="分析 Data Core 查询出的订单交付风险，返回红黄绿统计、风险分数和可解释原因。",
             icon="⚠️",
+            tool_type="filesystem",
+        )
+        api.register_tool(
+            tool_name="analyze_order_kpi_trends",
+            tool_func=analyze_order_kpi_trends,
+            description="按月分析订单量、平均进度和生产延误率，返回上升/下降/平稳趋势与异常月份。",
+            icon="📈",
             tool_type="filesystem",
         )
 
