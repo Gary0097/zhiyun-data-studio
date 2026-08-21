@@ -10,9 +10,11 @@ from pydantic import BaseModel, Field
 from qwenpaw.plugins.api import PluginApi
 
 try:
+    from .agent_tools import analyze_order_delivery_risk
     from .risk_engine import analyze_orders
     from .table_parser import parse_table
 except ImportError:
+    from agent_tools import analyze_order_delivery_risk
     from risk_engine import analyze_orders
     from table_parser import parse_table
 
@@ -50,6 +52,13 @@ class DataStudioPlugin:
 
     def register(self, api: PluginApi) -> None:
         api.register_http_router(router, prefix="/zhiyun-data-studio", tags=["zhiyun-data-studio"])
+        api.register_tool(
+            tool_name="analyze_order_delivery_risk",
+            tool_func=analyze_order_delivery_risk,
+            description="分析 Data Core 查询出的订单交付风险，返回红黄绿统计、风险分数和可解释原因。",
+            icon="⚠️",
+            tool_type="filesystem",
+        )
 
 
 plugin = DataStudioPlugin()
