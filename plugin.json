@@ -1,9 +1,9 @@
 {
   "id": "zhiyun-data-studio",
   "name": "Data Studio",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "type": "app",
-  "description": "统一数据导入、字段管理、模拟数据、订单进度与交付风险分析。",
+  "description": "统一数据导入、字段管理、模拟数据、订单进度看板、数据质量与交付风险分析。",
   "author": "Zhiyun AI",
   "entry": {
     "backend": "backend/main.py",
