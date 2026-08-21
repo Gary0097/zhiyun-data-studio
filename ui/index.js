@@ -44,6 +44,8 @@
     var batches = batchesState[0], setBatches = batchesState[1];
     var risksState = React.useState({ summary: { total: 0, red: 0, yellow: 0, green: 0, risk_rate: 0, average_progress: 0, overdue: 0, data_quality_issues: 0 }, status_distribution: {}, results: [] });
     var risks = risksState[0], setRisks = risksState[1];
+    var trendsState = React.useState({ summary: { periods: 0, valid_orders: 0, invalid_date_records: 0, direction: "平稳", order_count_slope: 0, anomaly_periods: [] }, series: [] });
+    var trends = trendsState[0], setTrends = trendsState[1];
     var loadingState = React.useState(true);
     var loading = loadingState[0], setLoading = loadingState[1];
     var errorState = React.useState("");
@@ -76,8 +78,11 @@
           return row;
         });
         setSchema(values[0]); setRecords(orderRows); setBatches(values[2].batches || []);
-        return json(APP + "/risk/analyze", { method: "POST", body: { orders: orderRows } });
-      }).then(setRisks).catch(function (err) { setError(err.message); }).finally(function () { setLoading(false); });
+        return Promise.all([
+          json(APP + "/risk/analyze", { method: "POST", body: { orders: orderRows } }),
+          json(APP + "/trends/analyze", { method: "POST", body: { orders: orderRows } })
+        ]);
+      }).then(function (analysis) { setRisks(analysis[0]); setTrends(analysis[1]); }).catch(function (err) { setError(err.message); }).finally(function () { setLoading(false); });
     }
 
     React.useEffect(function () { refresh(); }, []);
@@ -224,13 +229,33 @@
       { title: "操作", render: function (_, row) { return row.status === "active" ? h(antd.Popconfirm, { title: "撤销后将删除该批次数据，确认继续？", onConfirm: function () { rollback(row.batch_id); } }, h(antd.Button, { danger: true, size: "small" }, "撤销")) : null; } }
     ] })); }
 
-    var content = tab === "dashboard" ? dashboard() : tab === "data" ? dataTable() : tab === "import" ? importPanel() : tab === "fields" ? fieldsPanel() : batchesPanel();
+    function trendsPanel() {
+      var summary = trends.summary || {};
+      return h(React.Fragment, null,
+        h(antd.Alert, { type: "info", showIcon: true, message: "趋势结论基于数据库内有有效下单日期的记录计算。", description: summary.method, style: { marginBottom: 14 } }),
+        h("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,minmax(140px,1fr))", gap: 14, marginBottom: 14 } },
+          [["统计月份", summary.periods || 0], ["有效订单", summary.valid_orders || 0], ["订单量趋势", summary.direction || "平稳"], ["月均变化", summary.order_count_slope || 0]].map(function (item) {
+            return h(antd.Card, { key: item[0], size: "small" }, h(antd.Statistic, { title: item[0], value: item[1] }));
+          })
+        ),
+        summary.invalid_date_records ? h(antd.Alert, { type: "warning", showIcon: true, message: summary.invalid_date_records + " 条记录缺少有效下单日期，未进入趋势计算。", style: { marginBottom: 14 } }) : null,
+        h(antd.Card, { title: "订单关键指标月度趋势", extra: (summary.anomaly_periods || []).length ? h(antd.Tag, { color: "orange" }, "异常月份 " + summary.anomaly_periods.join("、")) : h(antd.Tag, { color: "green" }, "未发现异常月份") },
+          h(antd.Table, { rowKey: "period", size: "small", pagination: false, dataSource: trends.series || [], columns: [
+            { title: "月份", dataIndex: "period" }, { title: "订单量", dataIndex: "order_count" },
+            { title: "平均进度", dataIndex: "average_progress", render: function (value) { return h(antd.Progress, { percent: value, size: "small" }); } },
+            { title: "生产延误率", dataIndex: "delay_rate", render: function (value) { return value + "%"; } }
+          ] })
+        )
+      );
+    }
+
+    var content = tab === "dashboard" ? dashboard() : tab === "trends" ? trendsPanel() : tab === "data" ? dataTable() : tab === "import" ? importPanel() : tab === "fields" ? fieldsPanel() : batchesPanel();
     return h("div", { style: { padding: 22, height: "100%", overflow: "auto", background: "#f5f7fa" } },
       h("div", { style: { maxWidth: 1280, margin: "0 auto" } },
         h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 } }, h("div", null, h("h2", { style: { margin: 0 } }, "Data Studio"), h("div", { style: { color: "#667085" } }, "企业数据与订单交付风险分析")), h(antd.Button, { onClick: refresh, loading: loading }, "刷新")),
         error ? h(antd.Alert, { type: "error", showIcon: true, message: "Data Core不可用", description: error, style: { marginBottom: 14 } }) : null,
         h(antd.Tabs, { activeKey: tab, onChange: setTab, items: [
-          { key: "dashboard", label: "经营看板" }, { key: "data", label: "订单数据" }, { key: "import", label: "数据导入" }, { key: "fields", label: "字段管理" }, { key: "batches", label: "数据批次" }
+          { key: "dashboard", label: "经营看板" }, { key: "trends", label: "趋势分析" }, { key: "data", label: "订单数据" }, { key: "import", label: "数据导入" }, { key: "fields", label: "字段管理" }, { key: "batches", label: "数据批次" }
         ] }),
         h(antd.Spin, { spinning: loading }, content),
         h(antd.Modal, { title: "新增订单字段", open: fieldModal, onOk: addField, onCancel: function () { setFieldModal(false); } },
