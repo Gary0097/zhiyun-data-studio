@@ -31,7 +31,26 @@ class RiskEngineTests(unittest.TestCase):
             {"order_no": "B", "promised_date": "2026-08-24", "status": "生产中", "progress": 50},
             {"order_no": "C", "promised_date": "2026-08-01", "status": "已完成", "progress": 100},
         ], date(2026, 8, 22))
-        self.assertEqual(result["summary"], {"total": 3, "red": 1, "yellow": 1, "green": 1})
+        self.assertEqual(result["summary"]["total"], 3)
+        self.assertEqual(result["summary"]["red"], 1)
+        self.assertEqual(result["summary"]["yellow"], 1)
+        self.assertEqual(result["summary"]["green"], 1)
+        self.assertEqual(result["summary"]["overdue"], 1)
+        self.assertEqual(result["summary"]["risk_rate"], 66.7)
+
+    def test_iso_datetime_and_english_completed_status_are_supported(self) -> None:
+        risk = score_order({"order_no": "E", "promised_date": "2026-08-01T08:00:00Z", "status": "COMPLETED", "progress": 120}, date(2026, 8, 22))
+        self.assertEqual(risk["level"], "green")
+        self.assertEqual(risk["progress"], 100)
+
+    def test_missing_business_keys_are_reported_as_quality_issues(self) -> None:
+        result = analyze_orders([{"customer_name": "缺字段客户", "progress": 10}], date(2026, 8, 22))
+        self.assertEqual(result["summary"]["data_quality_issues"], 3)
+        self.assertIn("缺少订单编号", result["results"][0]["data_quality_issues"])
+
+    def test_status_distribution_is_returned(self) -> None:
+        result = analyze_orders([{"status": "生产中"}, {"status": "生产中"}, {"status": "待发货"}], date(2026, 8, 22))
+        self.assertEqual(result["status_distribution"], {"生产中": 2, "待发货": 1})
 
     def test_data_core_query_result_can_be_analyzed(self) -> None:
         orders = parse_order_payload('{"records":[{"record_id":"1","data":{"order_no":"A","status":"生产中","progress":20}}]}')
