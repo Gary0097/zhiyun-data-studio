@@ -46,6 +46,8 @@
     var risks = risksState[0], setRisks = risksState[1];
     var trendsState = React.useState({ summary: { periods: 0, valid_orders: 0, invalid_date_records: 0, direction: "平稳", order_count_slope: 0, anomaly_periods: [] }, series: [] });
     var trends = trendsState[0], setTrends = trendsState[1];
+    var briefState = React.useState({ summary: {}, insights: [], top_risks: [], missing_domains: [], disclaimer: "" });
+    var brief = briefState[0], setBrief = briefState[1];
     var loadingState = React.useState(true);
     var loading = loadingState[0], setLoading = loadingState[1];
     var errorState = React.useState("");
@@ -80,9 +82,10 @@
         setSchema(values[0]); setRecords(orderRows); setBatches(values[2].batches || []);
         return Promise.all([
           json(APP + "/risk/analyze", { method: "POST", body: { orders: orderRows } }),
-          json(APP + "/trends/analyze", { method: "POST", body: { orders: orderRows } })
+          json(APP + "/trends/analyze", { method: "POST", body: { orders: orderRows } }),
+          json(APP + "/brief/daily", { method: "POST", body: { orders: orderRows } })
         ]);
-      }).then(function (analysis) { setRisks(analysis[0]); setTrends(analysis[1]); }).catch(function (err) { setError(err.message); }).finally(function () { setLoading(false); });
+      }).then(function (analysis) { setRisks(analysis[0]); setTrends(analysis[1]); setBrief(analysis[2]); }).catch(function (err) { setError(err.message); }).finally(function () { setLoading(false); });
     }
 
     React.useEffect(function () { refresh(); }, []);
@@ -249,13 +252,42 @@
       );
     }
 
-    var content = tab === "dashboard" ? dashboard() : tab === "trends" ? trendsPanel() : tab === "data" ? dataTable() : tab === "import" ? importPanel() : tab === "fields" ? fieldsPanel() : batchesPanel();
+    function briefPanel() {
+      var summary = brief.summary || {};
+      var levelColor = { critical: "red", warning: "orange", info: "blue", normal: "green" };
+      function copyBrief() {
+        var lines = ["# 企业订单每日简报（" + (brief.brief_date || "") + "）", "", brief.disclaimer || ""];
+        (brief.insights || []).forEach(function (item) { lines.push("- " + item.text); });
+        lines.push("", "订单总数：" + (summary.total || 0), "高风险：" + (summary.red || 0), "逾期：" + (summary.overdue || 0), "平均进度：" + (summary.average_progress || 0) + "%");
+        navigator.clipboard.writeText(lines.join("\n")).then(function () { message.success("简报已复制"); }).catch(function () { message.error("复制失败，请检查浏览器权限"); });
+      }
+      return h(React.Fragment, null,
+        h(antd.Alert, { type: "warning", showIcon: true, message: brief.disclaimer || "当前仅覆盖订单域", style: { marginBottom: 14 } }),
+        h("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,minmax(140px,1fr))", gap: 14, marginBottom: 14 } },
+          [["订单总数", summary.total || 0], ["高风险", summary.red || 0], ["逾期订单", summary.overdue || 0], ["平均进度", (summary.average_progress || 0) + "%"]].map(function (item) {
+            return h(antd.Card, { key: item[0], size: "small" }, h(antd.Statistic, { title: item[0], value: item[1] }));
+          })
+        ),
+        h(antd.Card, { title: "今日管理提示", extra: h(antd.Button, { onClick: copyBrief }, "复制简报") },
+          h(antd.List, { dataSource: brief.insights || [], renderItem: function (item) { return h(antd.List.Item, null, h(antd.Tag, { color: levelColor[item.level] || "default" }, item.level), item.text); } })
+        ),
+        h(antd.Card, { title: "优先处理订单", style: { marginTop: 14 } },
+          h(antd.Table, { rowKey: function (row, index) { return row.order_no || index; }, size: "small", pagination: false, dataSource: brief.top_risks || [], columns: [
+            { title: "订单号", dataIndex: "order_no" }, { title: "客户", dataIndex: "customer_name" },
+            { title: "风险", dataIndex: "level", render: function (value) { return h(antd.Tag, { color: riskColor(value) }, riskText(value)); } },
+            { title: "分数", dataIndex: "score" }, { title: "判断依据", dataIndex: "reasons", render: function (value) { return (value || []).join("；"); } }
+          ] })
+        )
+      );
+    }
+
+    var content = tab === "dashboard" ? dashboard() : tab === "brief" ? briefPanel() : tab === "trends" ? trendsPanel() : tab === "data" ? dataTable() : tab === "import" ? importPanel() : tab === "fields" ? fieldsPanel() : batchesPanel();
     return h("div", { style: { padding: 22, height: "100%", overflow: "auto", background: "#f5f7fa" } },
       h("div", { style: { maxWidth: 1280, margin: "0 auto" } },
         h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 } }, h("div", null, h("h2", { style: { margin: 0 } }, "Data Studio"), h("div", { style: { color: "#667085" } }, "企业数据与订单交付风险分析")), h(antd.Button, { onClick: refresh, loading: loading }, "刷新")),
         error ? h(antd.Alert, { type: "error", showIcon: true, message: "Data Core不可用", description: error, style: { marginBottom: 14 } }) : null,
         h(antd.Tabs, { activeKey: tab, onChange: setTab, items: [
-          { key: "dashboard", label: "经营看板" }, { key: "trends", label: "趋势分析" }, { key: "data", label: "订单数据" }, { key: "import", label: "数据导入" }, { key: "fields", label: "字段管理" }, { key: "batches", label: "数据批次" }
+          { key: "dashboard", label: "经营看板" }, { key: "brief", label: "每日简报" }, { key: "trends", label: "趋势分析" }, { key: "data", label: "订单数据" }, { key: "import", label: "数据导入" }, { key: "fields", label: "字段管理" }, { key: "batches", label: "数据批次" }
         ] }),
         h(antd.Spin, { spinning: loading }, content),
         h(antd.Modal, { title: "新增订单字段", open: fieldModal, onOk: addField, onCancel: function () { setFieldModal(false); } },
