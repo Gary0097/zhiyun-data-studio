@@ -1,10 +1,10 @@
 # Zhiyun Data Studio
 
-v0.7.1 将全部 Agent 分析工具的治理类型修正为 QwenPaw 2.1.0 支持的 `internal`，避免工具注册冲突。
+v0.8.0 通过 `GET /zhiyun-data-core/orders` 建立持久化订单实时看板闭环，并让选中订单以可溯源上下文进入 Agent。
 
 Data Studio 是 AI-OS 的首个独立业务 PawApp，通过 `zhiyun-data-core` 使用 Workspace 统一数据库，不启动独立端口。
 
-## 已实现功能（v0.7.0）
+## 已实现功能（v0.8.0）
 
 - 订单数据总览与红/黄/绿交付风险统计。
 - 可解释风险评分，显示逾期、生产延误、物流停滞和低进度原因。
@@ -17,6 +17,9 @@ Data Studio 是 AI-OS 的首个独立业务 PawApp，通过 `zhiyun-data-core` �
 - Agent 可串联 `query_enterprise_orders` 与 `analyze_order_delivery_risk`，直接回答交付风险问题。
 - 订单号、客户、产品关键词检索与红/黄/绿风险筛选。
 - 当前筛选结果导出 CSV（包含风险等级、分数和判断依据）。
+- 关键词、客户、状态、风险及真实/模拟数据来源组合筛选。
+- 空数据、接口失败、Data Core 不可用及字段缺失的明确状态，不生成订单兜底。
+- 选中订单可成为 Agent 上下文，查询结果保留 Data Core `record_id` 和 `source_type`。
 - 风险率、平均进度、逾期数量和数据质量问题统计。
 - 支持 ISO 日期时间与中英文已完成状态，异常进度自动限制在 0–100%。
 - 按月统计订单量、平均进度与生产延误率，判断上升/下降/平稳趋势并识别异常月份。
@@ -55,8 +58,10 @@ qwenpaw app
 ## 验证
 
 ```bash
-python -m unittest -v tests.test_risk_engine
+python -m unittest discover -s tests -v
 node --check ui/index.js
 ```
+
+产品需求、功能进度与代码目录见 `docs/PRD.md`、`docs/FEATURE_PROGRESS.md` 和 `docs/CATALOG.md`。
 
 文件解析测试需要与 QwenPaw 相同的 Python 环境，以获得 FastAPI 和 openpyxl 依赖。
