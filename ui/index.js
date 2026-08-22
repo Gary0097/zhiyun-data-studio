@@ -48,6 +48,16 @@
     var trends = trendsState[0], setTrends = trendsState[1];
     var briefState = React.useState({ summary: {}, insights: [], top_risks: [], missing_domains: [], disclaimer: "" });
     var brief = briefState[0], setBrief = briefState[1];
+    var entityState = React.useState([]);
+    var entities = entityState[0], setEntities = entityState[1];
+    var fusionEntityState = React.useState("");
+    var fusionEntity = fusionEntityState[0], setFusionEntity = fusionEntityState[1];
+    var fusionSchemaState = React.useState(null);
+    var fusionSchema = fusionSchemaState[0], setFusionSchema = fusionSchemaState[1];
+    var fusionMappingState = React.useState({});
+    var fusionMapping = fusionMappingState[0], setFusionMapping = fusionMappingState[1];
+    var fusionState = React.useState(null);
+    var fusion = fusionState[0], setFusion = fusionState[1];
     var loadingState = React.useState(true);
     var loading = loadingState[0], setLoading = loadingState[1];
     var errorState = React.useState("");
@@ -88,7 +98,15 @@
       }).then(function (analysis) { setRisks(analysis[0]); setTrends(analysis[1]); setBrief(analysis[2]); }).catch(function (err) { setError(err.message); }).finally(function () { setLoading(false); });
     }
 
-    React.useEffect(function () { refresh(); }, []);
+    React.useEffect(function () {
+      refresh();
+      json(CORE + "/entities").then(function (data) { setEntities(data.entities || []); });
+    }, []);
+
+    React.useEffect(function () {
+      if (!fusionEntity) { setFusionSchema(null); return; }
+      json(CORE + "/schemas/" + encodeURIComponent(fusionEntity)).then(function (data) { setFusionSchema(data); setFusionMapping({}); setFusion(null); }).catch(function (err) { message.error(err.message); });
+    }, [fusionEntity]);
 
     function generate() {
       json(CORE + "/simulate/orders", { method: "POST", body: { count: 50, seed: Date.now() % 100000 } })
@@ -281,13 +299,51 @@
       );
     }
 
-    var content = tab === "dashboard" ? dashboard() : tab === "brief" ? briefPanel() : tab === "trends" ? trendsPanel() : tab === "data" ? dataTable() : tab === "import" ? importPanel() : tab === "fields" ? fieldsPanel() : batchesPanel();
+    function fusionPanel() {
+      var fields = fusionSchema ? fusionSchema.fields.filter(function (field) { return field.active; }) : [];
+      var fieldOptions = fields.map(function (field) { return { value: field.name, label: field.label + " (" + field.name + ")" }; });
+      var metrics = [
+        ["department", "部门字段", true], ["output", "产量/产值字段", true], ["labor_hours", "工时字段", true],
+        ["employee_count", "人数字段", false], ["cost", "成本字段", false], ["loss", "损耗字段", false]
+      ];
+      function runFusion() {
+        if (!fusionMapping.department || !fusionMapping.output || !fusionMapping.labor_hours) { message.warning("请至少映射部门、产量/产值和工时字段"); return; }
+        setLoading(true);
+        json(CORE + "/records/" + encodeURIComponent(fusionEntity) + "?limit=1000").then(function (data) {
+          return json(APP + "/fusion/analyze", { method: "POST", body: { records: (data.records || []).map(function (item) { return item.data; }), mapping: fusionMapping } });
+        }).then(setFusion).catch(function (err) { message.error(err.message); }).finally(function () { setLoading(false); });
+      }
+      return h(React.Fragment, null,
+        h(antd.Alert, { type: "info", showIcon: true, message: "选择任意部门数据表并映射业务字段，系统按部门计算人效、单位成本和损耗率。", style: { marginBottom: 14 } }),
+        h(antd.Card, { title: "指标模型配置", extra: h(antd.Button, { type: "primary", disabled: !fusionEntity, onClick: runFusion }, "生成部门指标") },
+          h(antd.Form, { layout: "vertical" },
+            h(antd.Form.Item, { label: "数据表", required: true }, h(antd.Select, { value: fusionEntity || undefined, placeholder: "选择已导入数据的部门表", options: entities.map(function (item) { return { value: item.entity, label: item.label + "（" + item.record_count + "条）" }; }), onChange: setFusionEntity })),
+            h("div", { style: { display: "grid", gridTemplateColumns: "repeat(3,minmax(200px,1fr))", gap: 12 } }, metrics.map(function (metric) {
+              return h(antd.Form.Item, { key: metric[0], label: metric[1], required: metric[2] }, h(antd.Select, { allowClear: true, value: fusionMapping[metric[0]], options: fieldOptions, placeholder: "选择字段", onChange: function (value) { var next = Object.assign({}, fusionMapping); if (value) next[metric[0]] = value; else delete next[metric[0]]; setFusionMapping(next); setFusion(null); } }));
+            }))
+          )
+        ),
+        fusion ? h(React.Fragment, null,
+          h("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,minmax(140px,1fr))", gap: 14, margin: "14px 0" } },
+            [["部门数", fusion.summary.departments], ["有效记录", fusion.summary.valid_records], ["总产量/产值", fusion.summary.total_output], ["总成本", fusion.summary.total_cost]].map(function (item) { return h(antd.Card, { key: item[0], size: "small" }, h(antd.Statistic, { title: item[0], value: item[1] })); })
+          ),
+          h(antd.Card, { title: "部门人效—产值—损耗指标" }, h(antd.Table, { rowKey: "department", size: "small", pagination: false, dataSource: fusion.results || [], scroll: { x: 1100 }, columns: [
+            { title: "部门", dataIndex: "department", fixed: "left" }, { title: "产量/产值", dataIndex: "output" }, { title: "工时", dataIndex: "labor_hours" },
+            { title: "人数", dataIndex: "employee_count" }, { title: "每工时产出", dataIndex: "output_per_hour" }, { title: "人均产出", dataIndex: "output_per_employee" },
+            { title: "总成本", dataIndex: "cost" }, { title: "单位成本", dataIndex: "cost_per_output" }, { title: "损耗", dataIndex: "loss" },
+            { title: "损耗率", dataIndex: "loss_rate", render: function (value) { return value == null ? "-" : value + "%"; } }
+          ] }))
+        ) : null
+      );
+    }
+
+    var content = tab === "dashboard" ? dashboard() : tab === "fusion" ? fusionPanel() : tab === "brief" ? briefPanel() : tab === "trends" ? trendsPanel() : tab === "data" ? dataTable() : tab === "import" ? importPanel() : tab === "fields" ? fieldsPanel() : batchesPanel();
     return h("div", { style: { padding: 22, height: "100%", overflow: "auto", background: "#f5f7fa" } },
       h("div", { style: { maxWidth: 1280, margin: "0 auto" } },
         h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 } }, h("div", null, h("h2", { style: { margin: 0 } }, "Data Studio"), h("div", { style: { color: "#667085" } }, "企业数据与订单交付风险分析")), h(antd.Button, { onClick: refresh, loading: loading }, "刷新")),
         error ? h(antd.Alert, { type: "error", showIcon: true, message: "Data Core不可用", description: error, style: { marginBottom: 14 } }) : null,
         h(antd.Tabs, { activeKey: tab, onChange: setTab, items: [
-          { key: "dashboard", label: "经营看板" }, { key: "brief", label: "每日简报" }, { key: "trends", label: "趋势分析" }, { key: "data", label: "订单数据" }, { key: "import", label: "数据导入" }, { key: "fields", label: "字段管理" }, { key: "batches", label: "数据批次" }
+          { key: "dashboard", label: "经营看板" }, { key: "fusion", label: "跨部门指标" }, { key: "brief", label: "每日简报" }, { key: "trends", label: "趋势分析" }, { key: "data", label: "订单数据" }, { key: "import", label: "数据导入" }, { key: "fields", label: "字段管理" }, { key: "batches", label: "数据批次" }
         ] }),
         h(antd.Spin, { spinning: loading }, content),
         h(antd.Modal, { title: "新增订单字段", open: fieldModal, onOk: addField, onCancel: function () { setFieldModal(false); } },

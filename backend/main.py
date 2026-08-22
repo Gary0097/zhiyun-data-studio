@@ -14,6 +14,7 @@ from qwenpaw.plugins.api import PluginApi
 try:
     from .agent_tools import analyze_order_delivery_risk
     from .brief_engine import generate_order_daily_brief
+    from .fusion_engine import analyze_department_metrics
     from .risk_engine import analyze_orders
     from .trend_engine import analyze_order_trends
     from .table_parser import parse_table
@@ -23,6 +24,7 @@ except ImportError:
         sys.path.insert(0, backend_dir)
     from agent_tools import analyze_order_delivery_risk
     from brief_engine import generate_order_daily_brief
+    from fusion_engine import analyze_department_metrics
     from risk_engine import analyze_orders
     from trend_engine import analyze_order_trends
     from table_parser import parse_table
@@ -33,6 +35,11 @@ MAX_UPLOAD = 20 * 1024 * 1024
 
 class RiskRequest(BaseModel):
     orders: list[dict[str, Any]] = Field(max_length=5000)
+
+
+class FusionRequest(BaseModel):
+    records: list[dict[str, Any]] = Field(max_length=10000)
+    mapping: dict[str, str]
 
 
 @router.get("/health")
@@ -66,6 +73,14 @@ async def daily_brief(request: RiskRequest) -> dict[str, Any]:
     return generate_order_daily_brief(request.orders)
 
 
+@router.post("/fusion/analyze")
+async def fusion_analysis(request: FusionRequest) -> dict[str, Any]:
+    try:
+        return analyze_department_metrics(request.records, request.mapping)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 def analyze_order_kpi_trends(orders: list[dict[str, Any]]) -> dict[str, Any]:
     """Analyze monthly order count, progress and production delay trends."""
     return analyze_order_trends(orders)
@@ -74,6 +89,11 @@ def analyze_order_kpi_trends(orders: list[dict[str, Any]]) -> dict[str, Any]:
 def create_order_daily_brief(orders: list[dict[str, Any]]) -> dict[str, Any]:
     """Create a one-page order management brief with risks and trend insights."""
     return generate_order_daily_brief(orders)
+
+
+def analyze_cross_department_metrics(records: list[dict[str, Any]], mapping: dict[str, str]) -> dict[str, Any]:
+    """Calculate configurable department output, labor, cost and loss indicators."""
+    return analyze_department_metrics(records, mapping)
 
 
 class DataStudioPlugin:
@@ -86,6 +106,13 @@ class DataStudioPlugin:
             tool_func=analyze_order_delivery_risk,
             description="分析 Data Core 查询出的订单交付风险，返回红黄绿统计、风险分数和可解释原因。",
             icon="⚠️",
+            tool_type="filesystem",
+        )
+        api.register_tool(
+            tool_name="analyze_cross_department_metrics",
+            tool_func=analyze_cross_department_metrics,
+            description="根据用户指定的部门、产量、工时、人数、成本和损耗字段，生成部门级人效、单位成本和损耗率指标。",
+            icon="🏭",
             tool_type="filesystem",
         )
         api.register_tool(
