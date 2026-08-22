@@ -39,7 +39,14 @@ def parse_order_payload(orders_json: str) -> list[dict[str, Any]]:
         data = item.get("data", item)
         if not isinstance(data, dict):
             raise RiskToolInputError("订单 data 必须是对象")
-        orders.append(data)
+        order = dict(data)
+        # Provenance must survive analysis so every Agent conclusion can be
+        # traced back to the exact persistent Data Core record.
+        order["record_id"] = item.get("record_id", data.get("record_id"))
+        order["source_type"] = item.get("source_type", data.get("source_type"))
+        if not order["record_id"] or order["source_type"] not in {"real", "simulated"}:
+            raise RiskToolInputError("每条订单必须包含 Data Core record_id 和 source_type")
+        orders.append(order)
     return orders
 
 
@@ -63,6 +70,8 @@ def analyze_order_delivery_risk(
         if not include_green:
             results = [item for item in results if item["level"] != "green"]
         capped = max(1, min(int(top_n), 100))
+        for result, order in zip(analysis["results"], orders):
+            result.update({"record_id": order["record_id"], "source_type": order["source_type"]})
         payload = {
             "summary": analysis["summary"],
             "returned": min(len(results), capped),

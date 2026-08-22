@@ -53,8 +53,13 @@ class RiskEngineTests(unittest.TestCase):
         self.assertEqual(result["status_distribution"], {"生产中": 2, "待发货": 1})
 
     def test_data_core_query_result_can_be_analyzed(self) -> None:
-        orders = parse_order_payload('{"records":[{"record_id":"1","data":{"order_no":"A","status":"生产中","progress":20}}]}')
+        orders = parse_order_payload('{"records":[{"record_id":"1","source_type":"real","data":{"order_no":"A","status":"生产中","progress":20}}]}')
         self.assertEqual(orders[0]["order_no"], "A")
+        self.assertEqual(orders[0]["record_id"], "1")
+
+    def test_agent_payload_without_provenance_is_rejected(self) -> None:
+        with self.assertRaisesRegex(RiskToolInputError, "record_id"):
+            parse_order_payload('[{"order_no":"A"}]')
 
     def test_malformed_agent_payload_is_rejected(self) -> None:
         with self.assertRaises(RiskToolInputError):
