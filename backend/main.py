@@ -31,6 +31,7 @@ except ImportError:
 
 router = APIRouter()
 MAX_UPLOAD = 20 * 1024 * 1024
+PLUGIN_VERSION = "0.7.2"
 
 
 class RiskRequest(BaseModel):
@@ -44,7 +45,7 @@ class FusionRequest(BaseModel):
 
 @router.get("/health")
 async def health() -> dict[str, Any]:
-    return {"status": "available", "data_core_required": True}
+    return {"status": "available", "version": PLUGIN_VERSION, "data_core_required": True}
 
 
 @router.post("/parse")
