@@ -53,6 +53,14 @@ def analyze_department_metrics(records: list[dict[str, Any]], mapping: dict[str,
             "loss_rate": round(100 * item["loss"] / output, 2) if output else None,
         })
     results.sort(key=lambda item: (-item["output"], item["department"]))
+    productivity = [item for item in results if item["output_per_hour"] is not None]
+    unit_cost = [item for item in results if item["cost_per_output"] is not None]
+    loss_rate = [item for item in results if item["loss_rate"] is not None]
+    highlights = {
+        "highest_productivity": max(productivity, key=lambda item: item["output_per_hour"])["department"] if productivity else None,
+        "lowest_unit_cost": min(unit_cost, key=lambda item: item["cost_per_output"])["department"] if unit_cost else None,
+        "lowest_loss_rate": min(loss_rate, key=lambda item: item["loss_rate"])["department"] if loss_rate else None,
+    }
     return {
         "summary": {
             "departments": len(results),
@@ -63,5 +71,6 @@ def analyze_department_metrics(records: list[dict[str, Any]], mapping: dict[str,
             "total_loss": round(sum(item["loss"] for item in results), 2),
         },
         "mapping": mapping,
+        "highlights": highlights,
         "results": results,
     }
