@@ -1,5 +1,7 @@
 # Zhiyun Data Studio
 
+v0.7.1 将全部 Agent 分析工具的治理类型修正为 QwenPaw 2.1.0 支持的 `internal`，避免工具注册冲突。
+
 Data Studio 是 AI-OS 的首个独立业务 PawApp，通过 `zhiyun-data-core` 使用 Workspace 统一数据库，不启动独立端口。
 
 ## 已实现功能（v0.7.0）
