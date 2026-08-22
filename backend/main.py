@@ -106,28 +106,28 @@ class DataStudioPlugin:
             tool_func=analyze_order_delivery_risk,
             description="分析 Data Core 查询出的订单交付风险，返回红黄绿统计、风险分数和可解释原因。",
             icon="⚠️",
-            tool_type="filesystem",
+            tool_type="internal",
         )
         api.register_tool(
             tool_name="analyze_cross_department_metrics",
             tool_func=analyze_cross_department_metrics,
             description="根据用户指定的部门、产量、工时、人数、成本和损耗字段，生成部门级人效、单位成本和损耗率指标。",
             icon="🏭",
-            tool_type="filesystem",
+            tool_type="internal",
         )
         api.register_tool(
             tool_name="create_order_daily_brief",
             tool_func=create_order_daily_brief,
             description="根据订单数据生成一页式每日管理简报，包含交付风险、逾期、临期、数据质量和趋势结论，并明确数据覆盖范围。",
             icon="📰",
-            tool_type="filesystem",
+            tool_type="internal",
         )
         api.register_tool(
             tool_name="analyze_order_kpi_trends",
             tool_func=analyze_order_kpi_trends,
             description="按月分析订单量、平均进度和生产延误率，返回上升/下降/平稳趋势与异常月份。",
             icon="📈",
-            tool_type="filesystem",
+            tool_type="internal",
         )
 
 
