@@ -1,7 +1,7 @@
 {
   "id": "zhiyun-data-studio",
   "name": "Data Studio",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "type": "app",
   "description": "从 Data Core 持久化订单驱动的实时进度、交付风险、趋势、每日简报与跨部门指标分析。",
   "author": "Zhiyun AI",

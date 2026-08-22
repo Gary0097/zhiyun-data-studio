@@ -1,6 +1,6 @@
 # Zhiyun Data Studio
 
-v0.8.0 通过 `GET /zhiyun-data-core/orders` 建立持久化订单实时看板闭环，并让选中订单以可溯源上下文进入 Agent。
+v0.9.0 在真实 Data Core 看板之上增加可持久化、可审阅、可撤销和可导出的分析工件闭环。
 
 Data Studio 是 AI-OS 的首个独立业务 PawApp，通过 `zhiyun-data-core` 使用 Workspace 统一数据库，不启动独立端口。
 
@@ -29,6 +29,8 @@ Data Studio 是 AI-OS 的首个独立业务 PawApp，通过 `zhiyun-data-core` �
 - 可从统一数据库选择任意部门数据表，自主映射部门、产量/产值、工时、人数、成本和损耗字段。
 - 自动生成部门级每工时产出、人均产出、单位成本和损耗率，并注册 `analyze_cross_department_metrics` Agent Tool。
 - 自动识别标准生产日报字段并完成映射，展示部门效率对比条形图，以及人效最高、单位成本最低、损耗率最低部门。
+- 风险清单、跨部门指标、每日简报和趋势可保存为 Project/Run/Artifact，并记录 Trace 与 Data Core 来源。
+- 具名审阅人可接受或撤销分析工件；只有已接受工件可以导出 JSON。
 
 ## AI 对话验收
 

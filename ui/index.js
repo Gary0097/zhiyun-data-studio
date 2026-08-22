@@ -84,6 +84,28 @@
     var source = sourceState[0], setSource = sourceState[1];
     var selectedState = React.useState(null);
     var selected = selectedState[0], setSelected = selectedState[1];
+    var artifactState = React.useState(null);
+    var artifact = artifactState[0], setArtifact = artifactState[1];
+    var reviewerState = React.useState("");
+    var reviewer = reviewerState[0], setReviewer = reviewerState[1];
+
+    function recordRefs(rows) {
+      return (rows || []).filter(function (row) { return row.record_id && (row.source_type === "real" || row.source_type === "simulated"); })
+        .map(function (row) { return { record_id: row.record_id, source_type: row.source_type }; });
+    }
+    function saveArtifact(kind, name, content, refs) {
+      if (!refs.length) { message.warning("没有可追溯的 Data Core 记录，不能保存工件"); return; }
+      setLoading(true);
+      json(APP + "/artifacts", { method: "POST", body: { kind: kind, name: name, content: content, source_refs: refs } })
+        .then(function (data) { setArtifact(data); message.success("已保存为待审阅工件"); })
+        .catch(function (err) { message.error(err.message); }).finally(function () { setLoading(false); });
+    }
+    function reviewArtifact(action) {
+      if (!reviewer.trim()) { message.warning("请输入审阅人"); return; }
+      json(APP + "/artifacts/" + artifact.id + "/reviews", { method: "POST", body: { action: action, reviewer: reviewer } })
+        .then(function (data) { setArtifact(data); message.success(action === "accept" ? "工件已接受" : "已撤销接受"); })
+        .catch(function (err) { message.error(err.message); });
+    }
 
     function refresh() {
       setLoading(true); setError("");
@@ -236,7 +258,8 @@
       h(antd.Card, { title: "交付风险订单", style: { marginTop: 16 }, extra: h(antd.Space, null,
         h(antd.Tag, { color: "red" }, "逾期 " + (risks.summary.overdue || 0)),
         h(antd.Tag, { color: "blue" }, "平均进度 " + (risks.summary.average_progress || 0) + "%"),
-        risks.summary.data_quality_issues ? h(antd.Tag, { color: "orange" }, "数据问题 " + risks.summary.data_quality_issues) : null
+        risks.summary.data_quality_issues ? h(antd.Tag, { color: "orange" }, "数据问题 " + risks.summary.data_quality_issues) : null,
+        h(antd.Button, { onClick: function () { saveArtifact("delivery_risk", "订单交付风险清单", risks, recordRefs(records)); } }, "保存为待审阅工件")
       ) },
         h(antd.Table, { rowKey: function (row, index) { return row.__record_id || row.order_no || index; }, size: "small", pagination: { pageSize: 8 }, dataSource: records.filter(function (row) { return (riskByOrder[row.order_no] || {}).level !== "green"; }), columns: columns.concat([
           { title: "分数", width: 70, render: function (_, row) { return (riskByOrder[row.order_no] || {}).score || 0; } },
@@ -299,7 +322,7 @@
           })
         ),
         summary.invalid_date_records ? h(antd.Alert, { type: "warning", showIcon: true, message: summary.invalid_date_records + " 条记录缺少有效下单日期，未进入趋势计算。", style: { marginBottom: 14 } }) : null,
-        h(antd.Card, { title: "订单关键指标月度趋势", extra: (summary.anomaly_periods || []).length ? h(antd.Tag, { color: "orange" }, "异常月份 " + summary.anomaly_periods.join("、")) : h(antd.Tag, { color: "green" }, "未发现异常月份") },
+        h(antd.Card, { title: "订单关键指标月度趋势", extra: h(antd.Space, null, (summary.anomaly_periods || []).length ? h(antd.Tag, { color: "orange" }, "异常月份 " + summary.anomaly_periods.join("、")) : h(antd.Tag, { color: "green" }, "未发现异常月份"), h(antd.Button, { onClick: function () { saveArtifact("kpi_trend", "订单关键指标趋势", trends, recordRefs(records)); } }, "保存为待审阅工件")) },
           h(antd.Table, { rowKey: "period", size: "small", pagination: false, dataSource: trends.series || [], columns: [
             { title: "月份", dataIndex: "period" }, { title: "订单量", dataIndex: "order_count" },
             { title: "平均进度", dataIndex: "average_progress", render: function (value) { return h(antd.Progress, { percent: value, size: "small" }); } },
@@ -325,7 +348,7 @@
             return h(antd.Card, { key: item[0], size: "small" }, h(antd.Statistic, { title: item[0], value: item[1] }));
           })
         ),
-        h(antd.Card, { title: "今日管理提示", extra: h(antd.Button, { onClick: copyBrief }, "复制简报") },
+        h(antd.Card, { title: "今日管理提示", extra: h(antd.Space, null, h(antd.Button, { onClick: copyBrief }, "复制简报"), h(antd.Button, { onClick: function () { saveArtifact("daily_brief", "企业订单每日简报", brief, recordRefs(records)); } }, "保存为待审阅工件")) },
           h(antd.List, { dataSource: brief.insights || [], renderItem: function (item) { return h(antd.List.Item, null, h(antd.Tag, { color: levelColor[item.level] || "default" }, item.level), item.text); } })
         ),
         h(antd.Card, { title: "优先处理订单", style: { marginTop: 14 } },
@@ -349,7 +372,8 @@
         if (!fusionMapping.department || !fusionMapping.output || !fusionMapping.labor_hours) { message.warning("请至少映射部门、产量/产值和工时字段"); return; }
         setLoading(true);
         json(CORE + "/records/" + encodeURIComponent(fusionEntity) + "?limit=1000").then(function (data) {
-          return json(APP + "/fusion/analyze", { method: "POST", body: { records: (data.records || []).map(function (item) { return item.data; }), mapping: fusionMapping } });
+          return json(APP + "/fusion/analyze", { method: "POST", body: { records: (data.records || []).map(function (item) { return item.data; }), mapping: fusionMapping } })
+            .then(function (result) { result.source_refs = recordRefs(data.records || []); return result; });
         }).then(setFusion).catch(function (err) { message.error(err.message); }).finally(function () { setLoading(false); });
       }
       return h(React.Fragment, null,
@@ -374,7 +398,7 @@
             ["单位成本最低", fusion.highlights && fusion.highlights.lowest_unit_cost],
             ["损耗率最低", fusion.highlights && fusion.highlights.lowest_loss_rate]
           ].map(function (item) { return h(antd.Col, { xs: 24, md: 8, key: item[0] }, h(antd.Card, { size: "small" }, h(antd.Statistic, { title: item[0], value: item[1] || "暂无" }))); })),
-          h(antd.Card, { title: "部门效率对比", style: { marginBottom: 14 } }, (fusion.results || []).map(function (row) {
+          h(antd.Card, { title: "部门效率对比", style: { marginBottom: 14 }, extra: h(antd.Button, { onClick: function () { saveArtifact("department_fusion", "跨部门融合指标", fusion, fusion.source_refs || []); } }, "保存为待审阅工件") }, (fusion.results || []).map(function (row) {
             var max = Math.max.apply(null, (fusion.results || []).map(function (item) { return item.output_per_hour || 0; })) || 1;
             return h("div", { key: row.department, style: { display: "grid", gridTemplateColumns: "120px 1fr 90px", gap: 10, alignItems: "center", marginBottom: 10 } },
               h("span", null, row.department), h(antd.Progress, { percent: Math.round(100 * (row.output_per_hour || 0) / max), showInfo: false }), h("strong", null, row.output_per_hour == null ? "-" : row.output_per_hour + "/工时")
@@ -399,6 +423,15 @@
           { key: "dashboard", label: "经营看板" }, { key: "fusion", label: "跨部门指标" }, { key: "brief", label: "每日简报" }, { key: "trends", label: "趋势分析" }, { key: "data", label: "订单数据" }, { key: "import", label: "数据导入" }, { key: "fields", label: "字段管理" }, { key: "batches", label: "数据批次" }
         ] }),
         h(antd.Spin, { spinning: loading }, content),
+        artifact ? h(antd.Card, { title: "分析工件审阅", style: { marginTop: 16 }, extra: h(antd.Tag, { color: artifact.project_status === "accepted" ? "green" : "orange" }, artifact.project_status) },
+          h(antd.Alert, { type: "info", showIcon: true, message: artifact.name, description: "Trace " + artifact.trace_id + " · " + artifact.source_refs.length + " 条 Data Core 来源" }),
+          h(antd.Space, { style: { marginTop: 12 }, wrap: true },
+            h(antd.Input, { value: reviewer, onChange: function (e) { setReviewer(e.target.value); }, placeholder: "审阅人", style: { width: 180 } }),
+            h(antd.Button, { type: "primary", onClick: function () { reviewArtifact("accept"); } }, "接受工件"),
+            h(antd.Button, { onClick: function () { reviewArtifact("revoke"); } }, "撤销接受"),
+            h(antd.Button, { disabled: artifact.project_status !== "accepted", onClick: function () { window.open(APP + "/artifacts/" + artifact.id + "/export", "_blank"); } }, "导出工件")
+          )
+        ) : null,
         h(antd.Modal, { title: "新增订单字段", open: fieldModal, onOk: addField, onCancel: function () { setFieldModal(false); } },
           h(antd.Form, { form: fieldForm, layout: "vertical" },
             h(antd.Form.Item, { name: "label", label: "显示名称", rules: [{ required: true }] }, h(antd.Input, { placeholder: "例如：销售区域" })),

@@ -4,10 +4,11 @@
 from __future__ import annotations
 
 import sys
+import sqlite3
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
 from qwenpaw.plugins.api import PluginApi
 
@@ -19,6 +20,7 @@ try:
     from .order_contract import OrderContractError, build_agent_context, normalize_order_response
     from .trend_engine import analyze_order_trends
     from .table_parser import parse_table
+    from .insight_workflow import InsightWorkflowStore
 except ImportError:
     backend_dir = str(Path(__file__).resolve().parent)
     if backend_dir not in sys.path:
@@ -30,10 +32,18 @@ except ImportError:
     from order_contract import OrderContractError, build_agent_context, normalize_order_response
     from trend_engine import analyze_order_trends
     from table_parser import parse_table
+    from insight_workflow import InsightWorkflowStore
 
 router = APIRouter()
 MAX_UPLOAD = 20 * 1024 * 1024
-PLUGIN_VERSION = "0.8.0"
+PLUGIN_VERSION = "0.9.0"
+
+
+def _insights() -> InsightWorkflowStore:
+    try:
+        return InsightWorkflowStore()
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail=f"分析工件存储不可用：{exc}") from exc
 
 
 class RiskRequest(BaseModel):
@@ -51,6 +61,20 @@ class DataCoreOrdersRequest(BaseModel):
 
 class AgentContextRequest(BaseModel):
     order: dict[str, Any]
+
+
+class ArtifactRequest(BaseModel):
+    kind: str
+    name: str = Field(min_length=1, max_length=200)
+    title: str | None = Field(default=None, max_length=200)
+    content: dict[str, Any]
+    source_refs: list[dict[str, Any]] = Field(min_length=1, max_length=5000)
+
+
+class ArtifactReviewRequest(BaseModel):
+    action: str
+    reviewer: str = Field(min_length=1, max_length=100)
+    note: str | None = Field(default=None, max_length=2000)
 
 
 @router.get("/health")
@@ -108,6 +132,47 @@ async def fusion_analysis(request: FusionRequest) -> dict[str, Any]:
         return analyze_department_metrics(request.records, request.mapping)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/artifacts")
+async def create_artifact(request: ArtifactRequest) -> dict[str, Any]:
+    try:
+        return _insights().create_artifact(request.kind, request.name, request.content,
+                                           request.source_refs, request.title)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except sqlite3.Error as exc:
+        raise HTTPException(status_code=503, detail=f"分析工件存储不可用：{exc}") from exc
+
+
+@router.get("/artifacts/{artifact_id}")
+async def get_artifact(artifact_id: str) -> dict[str, Any]:
+    try:
+        return _insights().get_artifact(artifact_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="分析工件不存在") from exc
+
+
+@router.post("/artifacts/{artifact_id}/reviews")
+async def review_artifact(artifact_id: str, request: ArtifactReviewRequest) -> dict[str, Any]:
+    try:
+        return _insights().review(artifact_id, request.action, request.reviewer, request.note)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="分析工件不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/artifacts/{artifact_id}/export")
+async def export_artifact(artifact_id: str) -> Response:
+    try:
+        content, media_type = _insights().export(artifact_id)
+        return Response(content=content, media_type=media_type,
+                        headers={"Content-Disposition": 'attachment; filename="data-studio-artifact.json"'})
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="分析工件不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 def analyze_order_kpi_trends(orders: list[dict[str, Any]]) -> dict[str, Any]:

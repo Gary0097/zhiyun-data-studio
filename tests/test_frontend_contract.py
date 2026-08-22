@@ -20,6 +20,10 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("selected.record_id", self.source)
         self.assertIn("selected.source_type", self.source)
 
+    def test_analysis_artifacts_have_review_and_export_controls(self):
+        for text in ["保存为待审阅工件", "接受工件", "撤销接受", "导出工件"]:
+            self.assertIn(text, self.source)
+
 
 if __name__ == "__main__":
     unittest.main()
