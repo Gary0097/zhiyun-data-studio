@@ -17,6 +17,9 @@ class FusionEngineTests(unittest.TestCase):
         self.assertEqual(first["output_per_hour"], 5.0)
         self.assertEqual(first["cost_per_output"], 9.33)
         self.assertEqual(first["loss_rate"], 2.0)
+        self.assertEqual(result["highlights"]["highest_productivity"], "一车间")
+        self.assertEqual(result["highlights"]["lowest_unit_cost"], "一车间")
+        self.assertEqual(result["highlights"]["lowest_loss_rate"], "一车间")
 
     def test_missing_required_mapping_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "labor_hours"):
