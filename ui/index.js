@@ -105,7 +105,13 @@
 
     React.useEffect(function () {
       if (!fusionEntity) { setFusionSchema(null); return; }
-      json(CORE + "/schemas/" + encodeURIComponent(fusionEntity)).then(function (data) { setFusionSchema(data); setFusionMapping({}); setFusion(null); }).catch(function (err) { message.error(err.message); });
+      json(CORE + "/schemas/" + encodeURIComponent(fusionEntity)).then(function (data) {
+        setFusionSchema(data);
+        var names = (data.fields || []).map(function (field) { return field.name; });
+        var standard = {};
+        ["department", "output", "labor_hours", "employee_count", "cost", "loss"].forEach(function (name) { if (names.indexOf(name) >= 0) standard[name] = name; });
+        setFusionMapping(standard); setFusion(null);
+      }).catch(function (err) { message.error(err.message); });
     }, [fusionEntity]);
 
     function generate() {
@@ -315,7 +321,10 @@
       }
       return h(React.Fragment, null,
         h(antd.Alert, { type: "info", showIcon: true, message: "选择任意部门数据表并映射业务字段，系统按部门计算人效、单位成本和损耗率。", style: { marginBottom: 14 } }),
-        h(antd.Card, { title: "指标模型配置", extra: h(antd.Button, { type: "primary", disabled: !fusionEntity, onClick: runFusion }, "生成部门指标") },
+        h(antd.Card, { title: "指标模型配置", extra: h(antd.Space, null,
+          entities.some(function (item) { return item.entity === "production"; }) ? h(antd.Button, { onClick: function () { setFusionEntity("production"); } }, "使用生产日报模板") : null,
+          h(antd.Button, { type: "primary", disabled: !fusionEntity, onClick: runFusion }, "生成部门指标")
+        ) },
           h(antd.Form, { layout: "vertical" },
             h(antd.Form.Item, { label: "数据表", required: true }, h(antd.Select, { value: fusionEntity || undefined, placeholder: "选择已导入数据的部门表", options: entities.map(function (item) { return { value: item.entity, label: item.label + "（" + item.record_count + "条）" }; }), onChange: setFusionEntity })),
             h("div", { style: { display: "grid", gridTemplateColumns: "repeat(3,minmax(200px,1fr))", gap: 12 } }, metrics.map(function (metric) {
@@ -327,6 +336,17 @@
           h("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,minmax(140px,1fr))", gap: 14, margin: "14px 0" } },
             [["部门数", fusion.summary.departments], ["有效记录", fusion.summary.valid_records], ["总产量/产值", fusion.summary.total_output], ["总成本", fusion.summary.total_cost]].map(function (item) { return h(antd.Card, { key: item[0], size: "small" }, h(antd.Statistic, { title: item[0], value: item[1] })); })
           ),
+          h(antd.Row, { gutter: [12, 12], style: { marginBottom: 14 } }, [
+            ["人效最高", fusion.highlights && fusion.highlights.highest_productivity],
+            ["单位成本最低", fusion.highlights && fusion.highlights.lowest_unit_cost],
+            ["损耗率最低", fusion.highlights && fusion.highlights.lowest_loss_rate]
+          ].map(function (item) { return h(antd.Col, { xs: 24, md: 8, key: item[0] }, h(antd.Card, { size: "small" }, h(antd.Statistic, { title: item[0], value: item[1] || "暂无" }))); })),
+          h(antd.Card, { title: "部门效率对比", style: { marginBottom: 14 } }, (fusion.results || []).map(function (row) {
+            var max = Math.max.apply(null, (fusion.results || []).map(function (item) { return item.output_per_hour || 0; })) || 1;
+            return h("div", { key: row.department, style: { display: "grid", gridTemplateColumns: "120px 1fr 90px", gap: 10, alignItems: "center", marginBottom: 10 } },
+              h("span", null, row.department), h(antd.Progress, { percent: Math.round(100 * (row.output_per_hour || 0) / max), showInfo: false }), h("strong", null, row.output_per_hour == null ? "-" : row.output_per_hour + "/工时")
+            );
+          })),
           h(antd.Card, { title: "部门人效—产值—损耗指标" }, h(antd.Table, { rowKey: "department", size: "small", pagination: false, dataSource: fusion.results || [], scroll: { x: 1100 }, columns: [
             { title: "部门", dataIndex: "department", fixed: "left" }, { title: "产量/产值", dataIndex: "output" }, { title: "工时", dataIndex: "labor_hours" },
             { title: "人数", dataIndex: "employee_count" }, { title: "每工时产出", dataIndex: "output_per_hour" }, { title: "人均产出", dataIndex: "output_per_employee" },
