@@ -38,6 +38,9 @@ class OrderContractTests(unittest.TestCase):
         self.assertIn('@router.post("/agent/context")', source)
         self.assertIn("status_code=502", source)
         self.assertIn("status_code=422", source)
+        for route in ['@router.post("/artifacts")', '@router.post("/artifacts/{artifact_id}/reviews")',
+                      '@router.get("/artifacts/{artifact_id}/export")']:
+            self.assertIn(route, source)
 
 
 if __name__ == "__main__":

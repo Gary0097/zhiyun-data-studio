@@ -1,4 +1,4 @@
-# Data Studio 产品需求（v0.8.0）
+# Data Studio 产品需求（v0.9.0）
 
 ## 实时客户订单进度看板
 
@@ -18,3 +18,11 @@
 - Data Core 是订单数据唯一来源；模拟数据仅可由用户显式生成并标注。
 - 支持加载、空数据、接口失败、Data Core 不可用和字段缺失状态。
 - 后端合约、前端状态、Agent 工具及运行接口均有自动化测试。
+
+## v0.9 Phase 1 分析工件闭环
+
+功能 1–6 的风险清单、跨部门融合、每日简报和趋势结果可以保存为独立
+Project、Run 和 Artifact。工件只保存分析结果及 Data Core `record_id`、
+`source_type` 引用，不复制或修改共享业务记录。具名审阅人可以接受或撤销；
+只有已接受工件可以导出。SQLite 位置可由 `DATA_STUDIO_DB` 配置，升级采用
+`CREATE TABLE IF NOT EXISTS`，回滚版本时保留数据库文件。
