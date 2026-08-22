@@ -1,0 +1,33 @@
+name: Codex-ready feature
+description: A bounded Data Studio capability ready for implementation
+title: "[Capability]: "
+labels: ["codex-ready"]
+body:
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options: [priority-p0, priority-p1, priority-p2]
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: User-visible outcome
+      description: Describe the real-data end-to-end result.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Include UI, backend, Agent, persistence, empty/error states, tests, and rollback.
+    validations:
+      required: true
+  - type: textarea
+    id: repositories
+    attributes:
+      label: Repository and integration impact
+      description: State whether the main-platform full-SHA lock will change after merge.
+    validations:
+      required: true
