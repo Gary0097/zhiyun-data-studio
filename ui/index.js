@@ -76,26 +76,34 @@
     var query = queryState[0], setQuery = queryState[1];
     var levelState = React.useState("all");
     var level = levelState[0], setLevel = levelState[1];
+    var customerState = React.useState("all");
+    var customer = customerState[0], setCustomer = customerState[1];
+    var statusState = React.useState("all");
+    var status = statusState[0], setStatus = statusState[1];
+    var sourceState = React.useState("all");
+    var source = sourceState[0], setSource = sourceState[1];
+    var selectedState = React.useState(null);
+    var selected = selectedState[0], setSelected = selectedState[1];
 
     function refresh() {
       setLoading(true); setError("");
-      return Promise.all([
-        json(CORE + "/schemas/orders"),
-        json(CORE + "/records/orders?limit=500"),
-        json(CORE + "/batches?entity=orders")
-      ]).then(function (values) {
-        var orderRows = (values[1].records || []).map(function (item) {
-          var row = Object.assign({}, item.data);
-          row.__record_id = item.record_id; row.__batch_id = item.batch_id; row.__source_type = item.source_type;
-          return row;
-        });
-        setSchema(values[0]); setRecords(orderRows); setBatches(values[2].batches || []);
+      return json(CORE + "/orders").then(function (orderPayload) {
+        return json(APP + "/orders/normalize", { method: "POST", body: { payload: orderPayload } });
+      }).then(function (normalized) {
+        var orderRows = normalized.orders || [];
+        setRecords(orderRows);
         return Promise.all([
+          json(CORE + "/schemas/orders").then(setSchema),
+          json(CORE + "/batches?entity=orders").then(function (value) { setBatches(value.batches || []); }),
           json(APP + "/risk/analyze", { method: "POST", body: { orders: orderRows } }),
           json(APP + "/trends/analyze", { method: "POST", body: { orders: orderRows } }),
           json(APP + "/brief/daily", { method: "POST", body: { orders: orderRows } })
         ]);
-      }).then(function (analysis) { setRisks(analysis[0]); setTrends(analysis[1]); setBrief(analysis[2]); }).catch(function (err) { setError(err.message); }).finally(function () { setLoading(false); });
+      }).then(function (analysis) {
+        setRisks(analysis[2]); setTrends(analysis[3]); setBrief(analysis[4]);
+      }).catch(function (err) {
+        setRecords([]); setError(err.message);
+      }).finally(function () { setLoading(false); });
     }
 
     React.useEffect(function () {
@@ -165,10 +173,15 @@
 
     var riskByOrder = {};
     risks.results.forEach(function (item) { riskByOrder[item.order_no] = item; });
-    var columns = schema.fields.filter(function (field) { return field.active; }).slice(0, 10).map(function (field) {
-      return { title: field.label, dataIndex: field.name, key: field.name, ellipsis: true, width: field.name === "customer_name" ? 140 : 110,
-        render: field.name === "progress" ? function (value) { return h(antd.Progress, { percent: Number(value || 0), size: "small" }); } : undefined };
-    });
+    var columns = [
+      ["订单号", "order_no", 130], ["客户", "customer_name", 140], ["产品", "product_name", 140],
+      ["数量", "quantity", 80], ["交期", "promised_date", 110], ["状态", "status", 100],
+      ["进度", "progress", 130], ["来源", "source_type", 100]
+    ].map(function (field) { return { title: field[0], dataIndex: field[1], key: field[1], ellipsis: true, width: field[2],
+      render: field[1] === "progress" ? function (value) { return value == null ? "字段缺失" : h(antd.Progress, { percent: Math.max(0, Math.min(100, Number(value) || 0)), size: "small" }); }
+        : field[1] === "source_type" ? function (value) { return value ? h(antd.Tag, { color: value === "real" ? "blue" : "purple" }, value === "real" ? "真实数据" : "模拟数据") : h(antd.Tag, { color: "warning" }, "来源缺失"); }
+        : function (value) { return value == null || value === "" ? h("span", { style: { color: "#b54708" } }, "字段缺失") : String(value); }
+    }; });
     columns.push({ title: "风险", key: "risk", fixed: "right", width: 100, render: function (_, row) {
       var risk = riskByOrder[row.order_no] || { level: "green", reasons: [] };
       return h(antd.Tooltip, { title: risk.reasons.join("；") }, h(antd.Tag, { color: riskColor(risk.level) }, riskText(risk.level)));
@@ -178,8 +191,24 @@
       var risk = riskByOrder[row.order_no] || { level: "green" };
       var needle = query.trim().toLowerCase();
       var matchesText = !needle || [row.order_no, row.customer_name, row.product_name].some(function (value) { return String(value || "").toLowerCase().indexOf(needle) >= 0; });
-      return matchesText && (level === "all" || risk.level === level);
+      return matchesText && (level === "all" || risk.level === level) &&
+        (customer === "all" || row.customer_name === customer) &&
+        (status === "all" || row.status === status) &&
+        (source === "all" || row.source_type === source);
     });
+
+    function selectForAgent(row) {
+      if (typeof Q.setAgentContext !== "function") {
+        message.error("当前 QwenPaw 宿主未提供 setAgentContext，无法安全提交 Agent 上下文");
+        return;
+      }
+      json(APP + "/agent/context", { method: "POST", body: { order: row } }).then(function (context) {
+        return Promise.resolve(Q.setAgentContext(context)).then(function () {
+          setSelected(context);
+          message.success("已将 " + context.label + " 加入 Agent 上下文");
+        });
+      }).catch(function (err) { message.error(err.message); });
+    }
 
     function exportCsv() {
       if (!visibleRecords.length) { message.warning("当前没有可导出的订单"); return; }
@@ -219,13 +248,21 @@
         ]), scroll: { x: 1400 } }))
     ); }
 
-    function dataTable() { return h(antd.Card, { title: "订单数据（" + visibleRecords.length + "/" + records.length + "）", extra: h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+    function dataTable() { return h(antd.Card, { title: "实时客户订单进度（" + visibleRecords.length + "/" + records.length + "）", extra: h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
       h(antd.Input.Search, { allowClear: true, value: query, placeholder: "订单号/客户/产品", style: { width: 220 }, onChange: function (event) { setQuery(event.target.value); } }),
+      h(antd.Select, { value: customer, style: { width: 140 }, onChange: setCustomer, options: [{ value: "all", label: "全部客户" }].concat(Array.from(new Set(records.map(function (row) { return row.customer_name; }).filter(Boolean))).map(function (value) { return { value: value, label: value }; })) }),
+      h(antd.Select, { value: status, style: { width: 120 }, onChange: setStatus, options: [{ value: "all", label: "全部状态" }].concat(Array.from(new Set(records.map(function (row) { return row.status; }).filter(Boolean))).map(function (value) { return { value: value, label: value }; })) }),
+      h(antd.Select, { value: source, style: { width: 120 }, onChange: setSource, options: [{ value: "all", label: "全部来源" }, { value: "real", label: "真实数据" }, { value: "simulated", label: "模拟数据" }] }),
       h(antd.Select, { value: level, style: { width: 110 }, onChange: setLevel, options: [{ value: "all", label: "全部风险" }, { value: "red", label: "高风险" }, { value: "yellow", label: "需关注" }, { value: "green", label: "正常" }] }),
       h(antd.Upload, { accept: ".xlsx,.csv", showUploadList: false, beforeUpload: upload }, h(antd.Button, null, "导入Excel/CSV")),
       h(antd.Button, { onClick: exportCsv }, "导出当前结果"),
       h(antd.Button, { type: "primary", onClick: generate }, "生成模拟订单")
-    ) }, h(antd.Table, { rowKey: function (row, index) { return row.__record_id || row.order_no || index; }, size: "small", pagination: { pageSize: 15 }, dataSource: visibleRecords, columns: columns, scroll: { x: 1100 } })); }
+    ) },
+      selected ? h(antd.Alert, { type: "info", showIcon: true, closable: true, onClose: function () { setSelected(null); }, message: selected.label + " 已选中", description: "Data Core record_id: " + selected.record_id + " · source_type: " + selected.source_type, style: { marginBottom: 12 } }) : null,
+      !loading && !error && records.length === 0 ? h(antd.Empty, { description: "Data Core 中暂无持久化订单" }) :
+      !loading && visibleRecords.length === 0 ? h(antd.Empty, { description: "没有符合当前筛选条件的订单" }) :
+      h(antd.Table, { rowKey: function (row, index) { return row.record_id || row.order_no || index; }, size: "small", pagination: { pageSize: 15 }, dataSource: visibleRecords, columns: columns.concat([{ title: "操作", fixed: "right", width: 120, render: function (_, row) { return h(antd.Button, { size: "small", onClick: function () { selectForAgent(row); } }, "交给 Agent"); } }]), scroll: { x: 1150 } })
+    ); }
 
     function importPanel() {
       if (!importData) return h(antd.Empty, { description: "请在订单数据页面选择Excel或CSV文件" });

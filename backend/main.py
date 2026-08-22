@@ -16,6 +16,7 @@ try:
     from .brief_engine import generate_order_daily_brief
     from .fusion_engine import analyze_department_metrics
     from .risk_engine import analyze_orders
+    from .order_contract import OrderContractError, build_agent_context, normalize_order_response
     from .trend_engine import analyze_order_trends
     from .table_parser import parse_table
 except ImportError:
@@ -26,12 +27,13 @@ except ImportError:
     from brief_engine import generate_order_daily_brief
     from fusion_engine import analyze_department_metrics
     from risk_engine import analyze_orders
+    from order_contract import OrderContractError, build_agent_context, normalize_order_response
     from trend_engine import analyze_order_trends
     from table_parser import parse_table
 
 router = APIRouter()
 MAX_UPLOAD = 20 * 1024 * 1024
-PLUGIN_VERSION = "0.7.2"
+PLUGIN_VERSION = "0.8.0"
 
 
 class RiskRequest(BaseModel):
@@ -41,6 +43,14 @@ class RiskRequest(BaseModel):
 class FusionRequest(BaseModel):
     records: list[dict[str, Any]] = Field(max_length=10000)
     mapping: dict[str, str]
+
+
+class DataCoreOrdersRequest(BaseModel):
+    payload: Any
+
+
+class AgentContextRequest(BaseModel):
+    order: dict[str, Any]
 
 
 @router.get("/health")
@@ -62,6 +72,24 @@ async def parse_upload(file: UploadFile = File(...)) -> dict[str, Any]:
 @router.post("/risk/analyze")
 async def risk_analysis(request: RiskRequest) -> dict[str, Any]:
     return analyze_orders(request.orders)
+
+
+@router.post("/orders/normalize")
+async def normalize_orders(request: DataCoreOrdersRequest) -> dict[str, Any]:
+    """Validate the public Data Core orders query contract for the UI."""
+    try:
+        return normalize_order_response(request.payload)
+    except OrderContractError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/agent/context")
+async def agent_context(request: AgentContextRequest) -> dict[str, Any]:
+    """Return a provenance-preserving context object for the host Agent."""
+    try:
+        return build_agent_context(request.order)
+    except OrderContractError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/trends/analyze")
