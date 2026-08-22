@@ -1,7 +1,7 @@
 {
   "id": "zhiyun-data-studio",
   "name": "Data Studio",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "type": "app",
   "description": "统一数据导入、订单进度、交付风险、趋势、每日简报与跨部门人效指标分析。",
   "author": "Zhiyun AI",
