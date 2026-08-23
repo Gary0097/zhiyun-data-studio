@@ -421,7 +421,7 @@
         h(antd.Collapse, { style: { marginBottom: 14 }, items: [{ key: "guide", label: "功能引导与使用说明", children: h("div", null,
           h("p", null, "功能介绍：读取统一数据中心的真实或明确标记的模拟数据，形成经营看板、交付风险、跨部门指标、每日简报和趋势工件。"),
           h("ol", null, h("li", null, "没有数据时先进入“数据导入”上传 Excel/CSV，或明确选择生成模拟数据。"), h("li", null, "进入“订单数据”页筛选客户、状态、风险和数据来源。"), h("li", null, "在简报、趋势或跨部门页面保存分析工件。"), h("li", null, "填写审阅人并接受后才能导出。")),
-          h(antd.Alert, { type: "info", showIcon: true, message: "所有结论保留 Data Core 来源和 Trace；空数据不会生成虚构结论。" })) }] }),
+          h(antd.Alert, { type: "info", showIcon: true, message: "分析使用 Data Core 来源；保存为分析工件后会附加完整来源引用和 Trace。空数据不会生成虚构结论。" })) }] }),
         error ? h(antd.Alert, { type: "error", showIcon: true, message: "Data Core不可用", description: error, style: { marginBottom: 14 } }) : null,
         h(antd.Tabs, { activeKey: tab, onChange: setTab, items: [
           { key: "dashboard", label: "经营看板" }, { key: "fusion", label: "跨部门指标" }, { key: "brief", label: "每日简报" }, { key: "trends", label: "趋势分析" }, { key: "data", label: "订单数据" }, { key: "import", label: "数据导入" }, { key: "fields", label: "字段管理" }, { key: "batches", label: "数据批次" }
