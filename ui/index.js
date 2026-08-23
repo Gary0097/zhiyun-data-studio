@@ -420,7 +420,7 @@
         h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 } }, h("div", null, h("h2", { style: { margin: 0 } }, "企业数据分析中心"), h("div", { style: { color: "#667085" } }, "用统一数据生成经营看板、风险预警、趋势和可审阅报告")), h(antd.Button, { onClick: refresh, loading: loading }, "刷新数据")),
         h(antd.Collapse, { style: { marginBottom: 14 }, items: [{ key: "guide", label: "功能引导与使用说明", children: h("div", null,
           h("p", null, "功能介绍：读取统一数据中心的真实或明确标记的模拟数据，形成经营看板、交付风险、跨部门指标、每日简报和趋势工件。"),
-          h("ol", null, h("li", null, "没有数据时先进入“数据导入”上传 Excel/CSV，或明确选择生成模拟数据。"), h("li", null, "在经营看板筛选客户、状态、风险和数据来源。"), h("li", null, "在简报、趋势或跨部门页面保存分析工件。"), h("li", null, "填写审阅人并接受后才能导出。")),
+          h("ol", null, h("li", null, "没有数据时先进入“数据导入”上传 Excel/CSV，或明确选择生成模拟数据。"), h("li", null, "进入“订单数据”页筛选客户、状态、风险和数据来源。"), h("li", null, "在简报、趋势或跨部门页面保存分析工件。"), h("li", null, "填写审阅人并接受后才能导出。")),
           h(antd.Alert, { type: "info", showIcon: true, message: "所有结论保留 Data Core 来源和 Trace；空数据不会生成虚构结论。" })) }] }),
         error ? h(antd.Alert, { type: "error", showIcon: true, message: "Data Core不可用", description: error, style: { marginBottom: 14 } }) : null,
         h(antd.Tabs, { activeKey: tab, onChange: setTab, items: [
