@@ -36,7 +36,7 @@ except ImportError:
 
 router = APIRouter()
 MAX_UPLOAD = 20 * 1024 * 1024
-PLUGIN_VERSION = "0.9.0"
+PLUGIN_VERSION = "0.9.1"
 
 
 def _insights() -> InsightWorkflowStore:

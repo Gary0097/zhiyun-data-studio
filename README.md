@@ -1,6 +1,6 @@
-# Zhiyun Data Studio
+# 智造云企业数据分析中心
 
-v0.9.0 在真实 Data Core 看板之上增加可持久化、可审阅、可撤销和可导出的分析工件闭环。
+v0.9.1 增加完整中文标题、页面内功能引导和使用说明；继续提供可持久化、可审阅、可撤销和可导出的分析工件闭环。
 
 Data Studio 是 AI-OS 的首个独立业务 PawApp，通过 `zhiyun-data-core` 使用 Workspace 统一数据库，不启动独立端口。
 
