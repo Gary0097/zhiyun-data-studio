@@ -4,6 +4,66 @@
   var React = Q.host.React;
   var antd = Q.host.antd;
   var h = React.createElement;
+
+  function zySpark() { return h("span", { style: { fontSize: 13 } }, "\u2726"); }
+  function zyPushAgent(context) {
+    if (Q.setAgentContext) Q.setAgentContext(context);
+    else window.dispatchEvent(new CustomEvent("qwenpaw:agent-context", { detail: context }));
+  }
+  function AgentDock(props) {
+    var listRef = React.useRef(null);
+    React.useEffect(function () {
+      if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+    }, [props.messages]);
+    if (!props.open) return null;
+    var S = {
+      mask: { position: "fixed", inset: 0, background: "rgba(15,23,42,0.32)", zIndex: 1200 },
+      dock: { position: "fixed", top: 0, right: 0, bottom: 0, width: "min(420px,92vw)", background: "#ffffff", borderLeft: "1px solid #e3e8ef", boxShadow: "-10px 0 30px rgba(16,24,40,0.16)", zIndex: 1201, display: "flex", flexDirection: "column" },
+      chat: { display: "flex", flexDirection: "column", height: "100%" },
+      head: { padding: "14px 16px", background: "#ffffff", borderBottom: "1px solid #e3e8ef" },
+      close: { border: "none", background: "transparent", cursor: "pointer", fontSize: 18, lineHeight: 1, color: "#98a2b3", padding: "4px 8px", borderRadius: 6 },
+      list: { flex: "1 1 auto", overflow: "auto", padding: 16 },
+      msg: { display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 },
+      bubble: { maxWidth: "92%", padding: "10px 12px", borderRadius: 11, fontSize: "12.5px", lineHeight: 1.6, boxShadow: "0 1px 2px rgba(16,24,40,0.04)", whiteSpace: "pre-wrap" },
+      card: { maxWidth: "92%", background: "#ffffff", border: "1px solid #e3e8ef", borderRadius: 11, padding: "12px 14px", boxShadow: "0 1px 2px rgba(16,24,40,0.04)", fontSize: 12.5 },
+      input: { padding: "12px 14px", background: "#ffffff", borderTop: "1px solid #e3e8ef" },
+      chips: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 },
+      chip: { border: "1px solid #e3e8ef", background: "#ffffff", borderRadius: 999, padding: "6px 12px", fontSize: 12, color: "#5b6472", cursor: "pointer" }
+    };
+    return h("div", null,
+      h("div", { style: S.mask, onClick: props.onClose }),
+      h("div", { style: S.dock },
+        h("div", { style: S.chat },
+          h("div", { style: S.head },
+            h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 } },
+              h("span", { style: { fontWeight: 650, fontSize: 15, color: "#1f2933" } }, "智能体助手 · " + (props.moduleLabel || "")),
+              h("button", { "aria-label": "close", onClick: props.onClose, style: S.close }, "\u2715")
+            ),
+            h("div", { style: { fontSize: 12, color: "#5b6472", marginTop: 8, lineHeight: 1.5 } }, "直接打字告诉我要做什么，或点击下方快捷指令，自动载入示例并交给智能体处理。"),
+            h("div", { style: S.chips },
+              (props.chips || []).map(function (c) {
+                return h("span", { key: c.key, style: S.chip, onClick: function () { props.onCommand(c.key, c.label); } }, c.label);
+              })
+            )
+          ),
+          h("div", { style: S.list, ref: listRef },
+            (props.messages || []).map(function (msg, i) {
+              var user = msg.role === "user";
+              return h("div", { key: i, style: Object.assign({}, S.msg, user ? { alignItems: "flex-end" } : { alignItems: "flex-start" }) },
+                h("div", { style: Object.assign({}, S.bubble, user ? { background: "#2563eb", color: "#fff", borderBottomRightRadius: 3 } : { background: "#ffffff", border: "1px solid #e3e8ef", color: "#1f2933", borderBottomLeftRadius: 3 }) }, msg.text),
+                msg.card ? h("div", { style: S.card }, msg.card) : null
+              );
+            })
+          ),
+          h("div", { style: S.input },
+            h(antd.Input, { value: props.draft, placeholder: props.placeholder || "例如：分析当前订单交付风险", onChange: function (e) { props.setDraft(e.target.value); }, onPressEnter: function (e) { if (props.draft.trim()) { props.onSend(props.draft); e.preventDefault(); } } }),
+            h(antd.Button, { type: "primary", style: { marginTop: 10, width: "100%" }, loading: props.busy, onClick: function () { if (props.draft.trim()) props.onSend(props.draft); } }, "发送")
+          )
+        )
+      )
+    );
+  }
+
   var CORE = "/zhiyun-data-core";
   var APP = "/zhiyun-data-studio";
 
@@ -34,6 +94,92 @@
   function riskText(level) { return level === "red" ? "高风险" : level === "yellow" ? "需关注" : "正常"; }
 
   function DataStudio() {
+
+    var agentOpenState = React.useState(false), agentOpen = agentOpenState[0], setAgentOpen = agentOpenState[1];
+    var agentDraftState = React.useState(""), agentDraft = agentDraftState[0], setAgentDraft = agentDraftState[1];
+    var agentMsgState = React.useState([]), agentMessages = agentMsgState[0], setAgentMessages = agentMsgState[1];
+    var agentBusyState = React.useState(false), agentBusy = agentBusyState[0], setAgentBusy = agentBusyState[1];
+    var agentSessionRef = React.useRef("app-dock-" + Date.now().toString(36));
+    function agentAdd(role, text, card) { setAgentMessages(function (prev) { return prev.concat([{ role: role, text: text, card: card }]); }); }
+    function agentCommand(key, label) {
+      var prompts = {"risk":"分析当前订单交付风险，按红黄绿统计并给出解释。","brief":"生成今日订单经营简报，包含交付风险、逾期和趋势结论。","trend":"按月分析订单量、平均进度和生产延误率趋势。","fusion":"跨部门分析人效、单位成本和损耗率指标。"};
+      var prompt = prompts[key] || (label || key);
+      startAgentChat(prompt);
+    }
+    function startAgentChat(text) {
+      text = String(text == null ? "" : text).trim();
+      if (!text || agentBusy) return;
+      var history = (agentMessages || []).filter(function (m) { return m && m.role !== "system"; }).map(function (m) { return { role: m.role === "bot" ? "assistant" : "user", text: m.text || "" }; }).slice(-12);
+      agentAdd("user", text, null);
+      agentAdd("bot", "", null);
+      setAgentBusy(true);
+      zyPushAgent({ app_id: "zhiyun-data-studio", kind: "chat", label: text, summary: {}, source_type: "real" });
+      function setLastBot(value) {
+        setAgentMessages(function (prev) { var next = prev.slice(); next[next.length - 1] = { role: "bot", text: value, card: null }; return next; });
+      }
+      var full = "";
+      Q.host.fetch("/zhiyun-data-studio/agent/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text, session_id: agentSessionRef.current, user_id: "default", history: history })
+      })
+      .then(function (response) {
+        if (!response.ok || !response.body) {
+          return response.text().then(function (t) { throw new Error("HTTP " + response.status + (t && t.trim() ? ": " + t.trim() : "")); });
+        }
+        var reader = response.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = "";
+        function read() {
+          return reader.read().then(function (chunk) {
+            if (chunk.done) return;
+            buffer += decoder.decode(chunk.value, { stream: true });
+            var lines = buffer.split("\n");
+            buffer = lines.pop();
+            lines.forEach(function (line) {
+              line = line.trim();
+              if (line.indexOf("data: ") !== 0) return;
+              var raw = line.slice(6).trim();
+              if (!raw || raw === "[DONE]") return;
+              var event;
+              try { event = JSON.parse(raw); } catch (e) { return; }
+              if (event.error) {
+                if (!full) { full = "智能体返回失败：" + event.error; setLastBot(full); }
+                return;
+              }
+              if (event.type === "text" && event.delta && typeof event.text === "string" && event.text) {
+                full += event.text;
+                setLastBot(full);
+              }
+              if (event.type === "message" && event.status === "completed" && Array.isArray(event.content)) {
+                for (var i = 0; i < event.content.length; i++) {
+                  var part = event.content[i];
+                  if (part && part.type === "text" && !part.delta && typeof part.text === "string" && part.text) {
+                    full = part.text;
+                    setLastBot(full);
+                  }
+                }
+              }
+              if (event.status === "failed" && !full) {
+                full = event.error || "智能体返回失败";
+                setLastBot(full);
+              }
+            });
+            return read();
+          });
+        }
+        return read();
+      })
+      .then(function () {
+        setAgentBusy(false);
+        if (!full) setLastBot("（智能体未返回可显示内容）");
+      })
+      .catch(function (err) {
+        setAgentBusy(false);
+        setLastBot("调用智能体失败：" + (err && err.message ? err.message : String(err)));
+      });
+    }
+
     var tabState = React.useState("dashboard");
     var tab = tabState[0], setTab = tabState[1];
     var recordsState = React.useState([]);
@@ -418,6 +564,7 @@
     return h("div", { style: { padding: 22, height: "100%", overflow: "auto", background: "#f5f7fa" } },
       h("div", { style: { maxWidth: 1280, margin: "0 auto" } },
         h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 } }, h("div", null, h("h2", { style: { margin: 0 } }, "企业数据分析中心"), h("div", { style: { color: "#667085" } }, "用统一数据生成经营看板、风险预警、趋势和可审阅报告")), h(antd.Button, { onClick: refresh, loading: loading }, "刷新数据")),
+    h("div", { style: { display: "flex", justifyContent: "flex-end", marginBottom: 12 } }, h(antd.Button, { type: "primary", onClick: function () { setAgentOpen(true); } }, zySpark(), " 问 Agent")),
         h(antd.Collapse, { style: { marginBottom: 14 }, items: [{ key: "guide", label: "功能引导与使用说明", children: h("div", null,
           h("p", null, "功能介绍：读取统一数据中心的真实或明确标记的模拟数据，形成经营看板、交付风险、跨部门指标、每日简报和趋势工件。"),
           h("ol", null, h("li", null, "没有数据时先进入“数据导入”上传 Excel/CSV，或明确选择生成模拟数据。"), h("li", null, "进入“订单数据”页筛选客户、状态、风险和数据来源。"), h("li", null, "在简报、趋势或跨部门页面保存分析工件。"), h("li", null, "填写审阅人并接受后才能导出。")),
@@ -444,7 +591,9 @@
           )
         )
       )
-    );
+, 
+        h(AgentDock, { open: agentOpen, onClose: function () { setAgentOpen(false); }, moduleLabel: "企业数据分析中心", chips: [{ key: "risk", label: "分析订单交付风险" }, { key: "brief", label: "生成今日经营简报" }, { key: "trend", label: "分析订单 KPI 趋势" }, { key: "fusion", label: "跨部门人效指标" }], messages: agentMessages, draft: agentDraft, setDraft: setAgentDraft, busy: agentBusy, onSend: startAgentChat, onCommand: agentCommand })
+          );
   }
 
   Q.registerRoutes("zhiyun-data-studio", [{ path: "/apps/zhiyun-data-studio", component: DataStudio, label: "企业数据分析中心", icon: "📊", priority: 90 }]);
