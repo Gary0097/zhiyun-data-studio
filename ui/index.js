@@ -58,7 +58,7 @@
               h("span", { style: { fontWeight: 650, fontSize: 15, color: "#1f2933" } }, "智能体助手 · " + (props.moduleLabel || "")),
               h("button", { "aria-label": "关闭", onClick: props.onClose, style: S.close }, "✕")
             ),
-            h("div", { style: { fontSize: 12, color: "#5b6472", marginTop: 8, lineHeight: 1.5 } }, "直接打字告诉我要做什么，或点击下方快捷指令，自动载入示例并交给智能体处理。"),
+            h("div", { style: { fontSize: 12, color: "#5b6472", marginTop: 8, lineHeight: 1.5 } }, "直接提问或点击快捷指令；智能体将基于当前授权企业数据和页面摘要回答，不会自动载入模拟数据。"),
             h("div", { style: S.chips },
               (props.chips || []).map(function (c) {
                 return h("span", { key: c.key, style: S.chip, onClick: function () { props.onCommand(c.key, c.label); } }, c.label);
@@ -76,7 +76,11 @@
           ),
           h("div", { style: S.input },
             h(antd.Input, { value: props.draft, placeholder: props.placeholder || "例如：帮我分析当前风险", onChange: function (e) { props.setDraft(e.target.value); }, onPressEnter: function (e) { if (props.draft.trim()) { props.onSend(props.draft); e.preventDefault(); } } }),
-            h(antd.Button, { type: "primary", style: { marginTop: 10, width: "100%" }, loading: props.busy, onClick: function () { if (props.draft.trim()) props.onSend(props.draft); } }, "发送")
+            h("div", { style: { display: "flex", gap: 8, marginTop: 10 } },
+              h(antd.Button, { type: "primary", style: { flex: 1 }, loading: props.busy, disabled: props.busy, onClick: function () { if (props.draft.trim()) props.onSend(props.draft); } }, "发送"),
+              props.busy ? h(antd.Button, { danger: true, onClick: props.onStop }, "停止") : null,
+              !props.busy && props.canRetry ? h(antd.Button, { onClick: props.onRetry }, "重试上次") : null
+            )
           )
         )
       )
@@ -152,6 +156,10 @@
     var agentDraftState = React.useState(""), agentDraft = agentDraftState[0], setAgentDraft = agentDraftState[1];
     var agentMsgState = React.useState([]), agentMessages = agentMsgState[0], setAgentMessages = agentMsgState[1];
     var agentBusyState = React.useState(false), agentBusy = agentBusyState[0], setAgentBusy = agentBusyState[1];
+    var agentRetryState = React.useState(false), agentCanRetry = agentRetryState[0], setAgentCanRetry = agentRetryState[1];
+    var agentSessionRef = React.useRef("data-studio-agent-" + Date.now().toString(36));
+    var agentAbortRef = React.useRef(null);
+    var agentLastPromptRef = React.useRef("");
 
     function agentAdd(role, text, card) {
       setAgentMessages(function (prev) { return prev.concat([{ role: role, text: text, card: card }]); });
@@ -159,26 +167,121 @@
     function agentCommand(key, label) {
       var labels = { dashboard: "经营看板", trends: "趋势分析", data: "订单数据", brief: "每日简报", fusion: "跨部门指标", import: "数据导入" };
       var name = labels[key] || label || key;
-      agentAdd("user", name);
       setTab(key);
-      setAgentBusy(true);
-      setTimeout(function () {
-        zyPushAgent({ app_id: "zhiyun-data-studio", kind: key, label: name, summary: risks, source_type: "simulated" });
-        setAgentBusy(false);
-        agentAdd("bot", "已切换至「" + name + "」并载入当前数据，可在右侧查看结构化指标、风险表格与可审阅工件。", null);
-      }, 250);
+      startAgentChat("请结合当前授权企业数据分析「" + name + "」，说明关键结论、数据依据和缺失信息。", key);
     }
-    function agentSend(text) {
+
+    function agentPageContext(activeTab) {
+      var selectedRef = selected ? {
+        record_id: selected.record_id || "",
+        source_type: selected.source_type || "",
+        label: selected.label || "",
+        order_no: selected.order_no || ""
+      } : null;
+      var context = {
+        active_tab: activeTab || tab,
+        filters: { query: query, risk: level, customer: customer, status: status, source_type: source },
+        record_counts: { total: records.length, visible: visibleRecords.length },
+        selected_record: selectedRef,
+        risk_summary: risks.summary || {},
+        trend_summary: trends.summary || {},
+        daily_brief: { summary: brief.summary || {}, missing_domains: brief.missing_domains || [], disclaimer: brief.disclaimer || "" },
+        artifact: artifact ? { id: artifact.id, kind: artifact.kind, name: artifact.name, status: artifact.status } : null
+      };
+      return JSON.stringify(context).slice(0, 6000);
+    }
+
+    function setLastAgentBot(value) {
+      setAgentMessages(function (prev) {
+        var next = prev.slice();
+        next[next.length - 1] = { role: "bot", text: value, card: null };
+        return next;
+      });
+    }
+
+    function stopAgentChat() {
+      if (agentAbortRef.current) agentAbortRef.current.abort();
+    }
+
+    function startAgentChat(text, requestedTab) {
+      text = String(text == null ? "" : text).trim();
+      if (!text || agentBusy) return;
+      var history = (agentMessages || []).filter(function (m) { return m && m.text; })
+        .map(function (m) { return { role: m.role === "bot" ? "assistant" : "user", text: m.text }; }).slice(-12);
+      var controller = new AbortController();
+      agentAbortRef.current = controller;
+      agentLastPromptRef.current = text;
+      setAgentCanRetry(false);
+      setAgentDraft("");
       agentAdd("user", text);
+      agentAdd("bot", "", null);
       setAgentBusy(true);
-      var key = /趋势|月度|预测/ .test(text) ? "trends" : /风险|预警|看板|订单|复盘/.test(text) ? "dashboard" : /导入|字段|数据源/.test(text) ? "import" : "dashboard";
-      setTimeout(function () {
-        setTab(key);
-        zyPushAgent({ app_id: "zhiyun-data-studio", kind: key, label: text, summary: risks, source_type: "simulated" });
+      zyPushAgent({ app_id: "zhiyun-data-studio", kind: requestedTab || tab, label: text, summary: { selected: selected, risk_summary: risks.summary }, source_type: selected && selected.source_type ? selected.source_type : "real" });
+      var token = "";
+      try { token = (Q.host.getApiToken && Q.host.getApiToken()) || window.localStorage.getItem("zhiyun_token") || ""; } catch (e) {}
+      var headers = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = "Bearer " + token;
+      var full = "";
+      function consumeLine(line) {
+        line = String(line || "").trim();
+        if (line.indexOf("data:") !== 0) return;
+        var raw = line.slice(5).trim();
+        if (!raw || raw === "[DONE]") return;
+        var event;
+        try { event = JSON.parse(raw); } catch (e) { return; }
+        if (event.error) throw new Error(String(event.error));
+        if (event.type === "text" && event.delta && typeof event.text === "string") {
+          full += event.text; setLastAgentBot(full);
+        }
+        if (event.type === "message" && event.status === "completed" && Array.isArray(event.content)) {
+          event.content.forEach(function (part) {
+            if (part && part.type === "text" && !part.delta && typeof part.text === "string" && part.text) {
+              full = part.text; setLastAgentBot(full);
+            }
+          });
+        }
+        if (event.status === "failed") throw new Error(event.error || "智能体返回失败");
+      }
+      Q.host.fetch("/zhiyun-app-discovery/agent/chat", {
+        method: "POST", headers: headers, signal: controller.signal,
+        body: JSON.stringify({
+          text: text, session_id: agentSessionRef.current, app_id: "zhiyun-data-studio",
+          context: agentPageContext(requestedTab), history: history
+        })
+      }).then(function (response) {
+        if (!response.ok || !response.body) {
+          return response.text().then(function (value) { throw new Error("HTTP " + response.status + (value && value.trim() ? ": " + value.trim() : "")); });
+        }
+        var reader = response.body.getReader(), decoder = new TextDecoder(), buffer = "";
+        function read() {
+          return reader.read().then(function (chunk) {
+            if (chunk.done) { if (buffer) consumeLine(buffer); return; }
+            buffer += decoder.decode(chunk.value, { stream: true });
+            var lines = buffer.split("\n"); buffer = lines.pop();
+            lines.forEach(consumeLine);
+            return read();
+          });
+        }
+        return read();
+      }).then(function () {
+        if (!full) throw new Error("智能体未返回可显示内容");
+      }).catch(function (err) {
+        var stopped = err && err.name === "AbortError";
+        setLastAgentBot(stopped ? "已停止本次智能体回答，可修改问题后重试。" : "调用智能体失败：" + (err && err.message ? err.message : String(err)));
+        setAgentCanRetry(!stopped);
+      }).finally(function () {
+        if (agentAbortRef.current === controller) agentAbortRef.current = null;
         setAgentBusy(false);
-        agentAdd("bot", "已把该问题交给企业数据分析智能体，正在生成结构化结果，请回到对应模块审阅与导出。", null);
-      }, 250);
+      });
     }
+
+    function agentSend(text) {
+      var key = /趋势|月度|预测/.test(text) ? "trends" : /导入|字段|数据源/.test(text) ? "import" : /融合|部门/.test(text) ? "fusion" : /简报|日报/.test(text) ? "brief" : "dashboard";
+      setTab(key);
+      startAgentChat(text, key);
+    }
+
+    React.useEffect(function () { return function () { if (agentAbortRef.current) agentAbortRef.current.abort(); }; }, []);
 
 
     function recordRefs(rows) {
@@ -536,7 +639,7 @@
           )
         )
       ),
-      h(AgentDock, { open: agentOpen, onClose: function () { setAgentOpen(false); }, chips: [{ key: "dashboard", label: "经营看板" }, { key: "trends", label: "趋势分析" }, { key: "data", label: "订单数据" }, { key: "brief", label: "每日简报" }, { key: "fusion", label: "跨部门指标" }, { key: "import", label: "数据导入" }], moduleLabel: "企业数据分析中心", messages: agentMessages, draft: agentDraft, setDraft: setAgentDraft, busy: agentBusy, onSend: agentSend, onCommand: agentCommand })
+      h(AgentDock, { open: agentOpen, onClose: function () { setAgentOpen(false); }, chips: [{ key: "dashboard", label: "经营看板" }, { key: "trends", label: "趋势分析" }, { key: "data", label: "订单数据" }, { key: "brief", label: "每日简报" }, { key: "fusion", label: "跨部门指标" }, { key: "import", label: "数据导入" }], moduleLabel: "企业数据分析中心", messages: agentMessages, draft: agentDraft, setDraft: setAgentDraft, busy: agentBusy, canRetry: agentCanRetry, onSend: agentSend, onCommand: agentCommand, onStop: stopAgentChat, onRetry: function () { startAgentChat(agentLastPromptRef.current, tab); } })
     );
   }
 
