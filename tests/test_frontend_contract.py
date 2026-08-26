@@ -46,6 +46,20 @@ class FrontendContractTests(unittest.TestCase):
         for text in ["new AbortController()", "controller.signal", "停止", "重试上次", "调用智能体失败", "智能体未返回可显示内容"]:
             self.assertIn(text, self.source)
 
+    def test_agent_provenance_never_defaults_aggregate_to_real(self):
+        for text in ['function agentSourceType()', '"mixed"', '"unknown"', 'source_type: agentSourceType()']:
+            self.assertIn(text, self.source)
+        self.assertNotIn('selected && selected.source_type ? selected.source_type : "real"', self.source)
+
+    def test_agent_artifact_context_uses_persisted_project_status(self):
+        self.assertIn("project_status: artifact.project_status", self.source)
+        self.assertNotIn("status: artifact.status", self.source)
+
+    def test_completed_agent_event_preserves_all_text_parts(self):
+        self.assertIn('var completedText = ""', self.source)
+        self.assertIn("completedText += part.text", self.source)
+        self.assertNotIn("full = part.text; setLastAgentBot(full)", self.source)
+
 
 if __name__ == "__main__":
     unittest.main()

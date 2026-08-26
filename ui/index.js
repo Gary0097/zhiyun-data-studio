@@ -186,9 +186,19 @@
         risk_summary: risks.summary || {},
         trend_summary: trends.summary || {},
         daily_brief: { summary: brief.summary || {}, missing_domains: brief.missing_domains || [], disclaimer: brief.disclaimer || "" },
-        artifact: artifact ? { id: artifact.id, kind: artifact.kind, name: artifact.name, status: artifact.status } : null
+        artifact: artifact ? { id: artifact.id, kind: artifact.kind, name: artifact.name, project_status: artifact.project_status } : null
       };
       return JSON.stringify(context).slice(0, 6000);
+    }
+
+    function agentSourceType() {
+      if (selected && selected.source_type) return selected.source_type;
+      var types = [];
+      (records || []).forEach(function (row) {
+        var value = row && row.source_type;
+        if (value && types.indexOf(value) < 0) types.push(value);
+      });
+      return types.length === 1 ? types[0] : types.length > 1 ? "mixed" : "unknown";
     }
 
     function setLastAgentBot(value) {
@@ -216,7 +226,7 @@
       agentAdd("user", text);
       agentAdd("bot", "", null);
       setAgentBusy(true);
-      zyPushAgent({ app_id: "zhiyun-data-studio", kind: requestedTab || tab, label: text, summary: { selected: selected, risk_summary: risks.summary }, source_type: selected && selected.source_type ? selected.source_type : "real" });
+      zyPushAgent({ app_id: "zhiyun-data-studio", kind: requestedTab || tab, label: text, summary: { selected: selected, risk_summary: risks.summary }, source_type: agentSourceType() });
       var token = "";
       try { token = (Q.host.getApiToken && Q.host.getApiToken()) || window.localStorage.getItem("zhiyun_token") || ""; } catch (e) {}
       var headers = { "Content-Type": "application/json" };
@@ -234,11 +244,13 @@
           full += event.text; setLastAgentBot(full);
         }
         if (event.type === "message" && event.status === "completed" && Array.isArray(event.content)) {
+          var completedText = "";
           event.content.forEach(function (part) {
             if (part && part.type === "text" && !part.delta && typeof part.text === "string" && part.text) {
-              full = part.text; setLastAgentBot(full);
+              completedText += part.text;
             }
           });
+          if (completedText) { full = completedText; setLastAgentBot(full); }
         }
         if (event.status === "failed") throw new Error(event.error || "智能体返回失败");
       }
