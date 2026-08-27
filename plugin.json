@@ -1,7 +1,7 @@
 {
   "id": "zhiyun-data-studio",
   "name": "企业数据分析中心",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "type": "app",
   "description": "从 Data Core 持久化订单驱动的实时进度、交付风险、趋势、每日简报与跨部门指标分析。",
   "author": "Zhiyun AI",
@@ -28,6 +28,8 @@
       "chat": true,
       "storage": false
     },
-    "requires": ["zhiyun-data-core>=0.1.0"]
+    "requires": [
+      "zhiyun-data-core>=0.1.0"
+    ]
   }
 }
