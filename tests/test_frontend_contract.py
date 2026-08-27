@@ -11,6 +11,11 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('json(CORE + "/orders")', self.source)
         self.assertNotIn('json(CORE + "/records/orders?limit=500")', self.source)
 
+    def test_shared_helper_propagates_bearer_token(self):
+        """统一请求助手必须携带登录令牌（Data Core 已启用强制鉴权）。"""
+        self.assertIn('localStorage.getItem("zhiyun_token")', self.source)
+        self.assertIn('"Authorization"] = "Bearer " + zt', self.source)
+
     def test_required_filters_and_states_are_present(self):
         for text in ("全部客户", "全部状态", "全部来源", "真实数据", "模拟数据", "Data Core 中暂无持久化订单", "字段缺失"):
             self.assertIn(text, self.source)
