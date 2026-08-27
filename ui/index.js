@@ -10,6 +10,10 @@
   function json(path, options) {
     options = options || {};
     var headers = options.headers || {};
+    try {
+      var zt = window.localStorage.getItem("zhiyun_token");
+      if (zt) headers["Authorization"] = "Bearer " + zt;
+    } catch (e) {}
     if (options.body && !(options.body instanceof FormData)) headers["Content-Type"] = "application/json";
     return Q.host.fetch(path, {
       method: options.method || "GET",
